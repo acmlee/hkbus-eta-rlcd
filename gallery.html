@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gallery — hk-bus-eta-rlcd Layout Candidates</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #fff;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: pixelated;
+  padding: 32px 24px;
+}
+h1 {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  font-size: 12px;
+  margin-bottom: 28px;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 60px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.option-label {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 2px;
+  letter-spacing: -0.3px;
+}
+.option-tagline {
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+.mockup-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.mockup-sizer {
+  width: 600px;   /* 400 × 1.5 */
+  height: 450px;  /* 300 × 1.5 */
+  position: relative;
+  border: 1px solid #000;
+  background: #fff;
+}
+.mockup {
+  width: 400px;
+  height: 300px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(1.5);
+  transform-origin: top left;
+  background: #fff;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: pixelated;
+}
+
+/* ── Common layout elements (per updated design.md §3) ── */
+
+/* Header: "HK Bus ETA" left (regular, ~16px) + "HH:MM" right (bold, ~22px) */
+.disp-header {
+  background: #000;
+  color: #fff;
+  height: 36px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.disp-header .header-label {
+  font-size: 15px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+.disp-header .header-time {
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+/* Footer: black bg, white text, ~18px high */
+.disp-footer {
+  background: #000;
+  color: #fff;
+  height: 18px;
+  padding: 0 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* 1px horizontal divider between route rows */
+.disp-divider {
+  height: 1px;
+  background: #000;
+  width: 100%;
+}
+
+/* ── Route row (Option A, C mini, D columns) ── */
+.route-row {
+  display: flex;
+  width: 100%;
+  height: 81px;
+}
+.route-col-route {
+  width: 60px;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+}
+.route-col-route .rt-num {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.route-col-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 4px;
+}
+.route-col-info .rt-dest {
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.route-col-info .rt-stop {
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.3;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.route-col-eta {
+  width: 120px;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+.eta-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.eta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;  /* visible gap between each ETA value (design.md §3) */
+}
+.eta-primary {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+  letter-spacing: -0.3px;
+}
+.eta-secondary {
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: -0.3px;
+}
+.min-suffix {
+  font-size: 9px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  color: #000;
+}
+
+/* ── Option B — Card Row ── */
+.opt-b .cards-row {
+  display: flex;
+  width: 100%;
+  height: 244px;
+  gap: 3px;
+  padding: 0 3px;
+  align-items: stretch;
+}
+.opt-b .card {
+  flex: 1;
+  border: 1px solid #000;
+  display: flex;
+  flex-direction: column;
+  padding: 5px 4px;
+}
+.opt-b .card-route-num {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #000;
+  margin-bottom: 4px;
+}
+.opt-b .card-dest {
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.opt-b .card-stop {
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-top: 1px;
+}
+.opt-b .card-etas {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.opt-b .card .eta-primary {
+  font-size: 24px;
+}
+.opt-b .card .eta-secondary {
+  font-size: 16px;
+  padding-top: 2px;
+}
+.opt-b .card-min {
+  font-size: 9px;
+  font-weight: normal;
+  text-align: right;
+  width: 100%;
+  margin-top: 1px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Option C — Priority Highlight ── */
+.opt-c .prio-header {
+  height: 163px;
+  border-bottom: 1px solid #000;
+  display: flex;
+  align-items: stretch;
+}
+.opt-c .prio-header .route-col-route {
+  width: 60px;
+  min-width: 60px;
+}
+.opt-c .prio-header .route-col-route .rt-num {
+  font-size: 28px;
+}
+.opt-c .prio-header .route-col-info .rt-dest {
+  font-size: 20px;
+}
+.opt-c .prio-header .route-col-info .rt-stop {
+  font-size: 14px;
+}
+.opt-c .prio-header .route-col-eta {
+  width: 130px;
+  min-width: 130px;
+}
+.opt-c .prio-header .eta-primary {
+  font-size: 28px;
+}
+.opt-c .prio-header .eta-secondary {
+  font-size: 16px;
+  padding-top: 4px;
+}
+.opt-c .mini-row {
+  height: 79px;
+  display: flex;
+  border-bottom: 1px solid #000;
+}
+.opt-c .mini-row:last-child {
+  border-bottom: none;
+}
+.opt-c .mini-row .route-col-route {
+  width: 60px;
+  min-width: 60px;
+}
+.opt-c .mini-row .route-col-route .rt-num {
+  font-size: 18px;
+}
+.opt-c .mini-row .route-col-info .rt-dest {
+  font-size: 14px;
+}
+.opt-c .mini-row .route-col-info .rt-stop {
+  font-size: 11px;
+}
+.opt-c .mini-row .route-col-eta {
+  width: 110px;
+  min-width: 110px;
+}
+.opt-c .mini-row .eta-primary {
+  font-size: 20px;
+}
+.opt-c .mini-row .eta-secondary {
+  font-size: 16px;
+  padding-top: 2px;
+}
+
+/* ── Option D — Two-Column Split ── */
+.opt-d .two-col-body {
+  display: flex;
+  width: 100%;
+  height: 244px;
+}
+.opt-d .left-col {
+  width: 60px;
+  min-width: 60px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #000;
+}
+.opt-d .left-col .lc-cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #000;
+}
+.opt-d .left-col .lc-cell:last-child {
+  border-bottom: none;
+}
+.opt-d .left-col .lc-route-num {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: -0.5px;
+}
+.opt-d .right-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.opt-d .right-col .rc-row {
+  flex: 1;
+  display: flex;
+  border-bottom: 1px solid #000;
+  padding: 0 6px;
+}
+.opt-d .right-col .rc-row:last-child {
+  border-bottom: none;
+}
+.opt-d .rc-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.opt-d .rc-info .rt-dest {
+  font-size: 17px;
+  font-weight: bold;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.opt-d .rc-info .rt-stop {
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-top: 1px;
+}
+.opt-d .rc-eta {
+  width: 108px;
+  min-width: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 4px;
+}
+.opt-d .rc-eta .eta-primary {
+  font-size: 24px;
+}
+.opt-d .rc-eta .eta-secondary {
+  font-size: 16px;
+  padding-top: 2px;
+}
+.opt-d .rc-eta .min-suffix {
+  font-size: 9px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+
+<h1>hk-bus-eta-rlcd &middot; Layout Candidates</h1>
+<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 reflective display &middot; 3 routes &middot; per updated design.md &sect;3</p>
+
+<div class="gallery-grid">
+
+<!-- ════════════════════════════════════════ -->
+<!-- Option A — Stacked List                 -->
+<!-- ════════════════════════════════════════ -->
+<div class="mockup-wrapper">
+  <p class="option-label">Option A &mdash; Stacked List</p>
+  <p class="option-tagline">Best scannability &middot; standard table structure &middot; fully conforms to design.md</p>
+  <div class="mockup-sizer">
+    <div class="mockup opt-a">
+
+      <div class="disp-header">
+        <span class="header-label">HK Bus ETA</span>
+        <span class="header-time">14:32</span>
+      </div>
+
+      <!-- Route 1A -->
+      <div class="route-row">
+        <div class="route-col-route"><span class="rt-num">1A</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 尖沙咀碼頭</div>
+          <div class="rt-stop">尖沙咀 廣東道</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">1</span>
+              <span class="eta-secondary">8</span>
+              <span class="eta-secondary">22</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="disp-divider"></div>
+
+      <!-- Route 5B -->
+      <div class="route-row">
+        <div class="route-col-route"><span class="rt-num">5B</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 堅尼地城海旁</div>
+          <div class="rt-stop">堅尼地城</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">14</span>
+              <span class="eta-secondary">31</span>
+              <span class="eta-secondary">45</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="disp-divider"></div>
+
+      <!-- Route 296X -->
+      <div class="route-row">
+        <div class="route-col-route"><span class="rt-num">296X</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 康城站</div>
+          <div class="rt-stop">將軍澳工業村</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">--</span>
+              <span class="eta-secondary">--</span>
+              <span class="eta-secondary">--</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="disp-divider"></div>
+
+      <div class="disp-footer">
+        <span>Updated 14:32:00</span>
+        <span>Next: 18s</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Option B — Card Row                     -->
+<!-- ════════════════════════════════════════ -->
+<div class="mockup-wrapper">
+  <p class="option-label">Option B &mdash; Card Row</p>
+  <p class="option-tagline">Routes visually separated &middot; less horizontal space per route</p>
+  <p class="option-note" style="font-size:9px;margin-bottom:8px;">Trade-off: card borders (&sect;3 rule&nbsp;3 violation) &middot; &quot;堅尼地城海旁&quot; needs font shrinking to fit card width</p>
+  <div class="mockup-sizer">
+    <div class="mockup opt-b">
+
+      <div class="disp-header">
+        <span class="header-label">HK Bus ETA</span>
+        <span class="header-time">14:32</span>
+      </div>
+
+      <div class="cards-row">
+
+        <div class="card">
+          <div class="card-route-num">1A</div>
+          <div class="card-dest">往 尖沙咀碼頭</div>
+          <div class="card-stop">尖沙咀 廣東道</div>
+          <div class="card-etas">
+            <span class="eta-primary">1</span>
+            <span class="eta-secondary">8</span>
+            <span class="eta-secondary">22</span>
+          </div>
+          <div class="card-min">min</div>
+        </div>
+
+        <div class="card">
+          <div class="card-route-num">5B</div>
+          <div class="card-dest" style="font-size:13px;">往 堅尼地城海旁</div>
+          <div class="card-stop">堅尼地城</div>
+          <div class="card-etas">
+            <span class="eta-primary">14</span>
+            <span class="eta-secondary">31</span>
+            <span class="eta-secondary">45</span>
+          </div>
+          <div class="card-min">min</div>
+        </div>
+
+        <div class="card">
+          <div class="card-route-num">296X</div>
+          <div class="card-dest">往 康城站</div>
+          <div class="card-stop">將軍澳工業村</div>
+          <div class="card-etas">
+            <span class="eta-primary">--</span>
+            <span class="eta-secondary">--</span>
+            <span class="eta-secondary">--</span>
+          </div>
+          <div class="card-min">min</div>
+        </div>
+
+      </div>
+
+      <div class="disp-divider"></div>
+
+      <div class="disp-footer">
+        <span>Updated 14:32:00</span>
+        <span>Next: 18s</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Option C — Priority Highlight           -->
+<!-- ════════════════════════════════════════ -->
+<div class="mockup-wrapper">
+  <p class="option-label">Option C &mdash; Priority Highlight</p>
+  <p class="option-tagline">Best glanceability &middot; emphasises the soonest bus &middot; remaining routes reduced</p>
+  <p class="option-note" style="font-size:9px;margin-bottom:8px;">Trade-off: non-uniform row height (&sect;3) &middot; secondary routes have smaller text</p>
+  <div class="mockup-sizer">
+    <div class="mockup opt-c">
+
+      <div class="disp-header">
+        <span class="header-label">HK Bus ETA</span>
+        <span class="header-time">14:32</span>
+      </div>
+
+      <!-- Priority row: Route 1A -->
+      <div class="prio-header">
+        <div class="route-col-route"><span class="rt-num">1A</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 尖沙咀碼頭</div>
+          <div class="rt-stop">尖沙咀 廣東道</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">1</span>
+              <span class="eta-secondary">8</span>
+              <span class="eta-secondary">22</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mini row: 5B -->
+      <div class="mini-row">
+        <div class="route-col-route"><span class="rt-num">5B</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 堅尼地城海旁</div>
+          <div class="rt-stop">堅尼地城</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">14</span>
+              <span class="eta-secondary">31</span>
+              <span class="eta-secondary">45</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mini row: 296X -->
+      <div class="mini-row">
+        <div class="route-col-route"><span class="rt-num">296X</span></div>
+        <div class="route-col-info">
+          <div class="rt-dest">往 康城站</div>
+          <div class="rt-stop">將軍澳工業村</div>
+        </div>
+        <div class="route-col-eta">
+          <div class="eta-group">
+            <div class="eta-row">
+              <span class="eta-primary">--</span>
+              <span class="eta-secondary">--</span>
+              <span class="eta-secondary">--</span>
+            </div>
+            <span class="min-suffix">min</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="disp-footer">
+        <span>Updated 14:32:00</span>
+        <span>Next: 18s</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Option D — Two-Column Split             -->
+<!-- ════════════════════════════════════════ -->
+<div class="mockup-wrapper">
+  <p class="option-label">Option D &mdash; Two-Column Split</p>
+  <p class="option-tagline">Route numbers as a visual index &middot; strong vertical anchor</p>
+  <p class="option-note" style="font-size:9px;margin-bottom:8px;">Trade-off: vertical divider (&sect;3 rule&nbsp;3 violation) &middot; 296X needs reduced font in left column</p>
+  <div class="mockup-sizer">
+    <div class="mockup opt-d">
+
+      <div class="disp-header">
+        <span class="header-label">HK Bus ETA</span>
+        <span class="header-time">14:32</span>
+      </div>
+
+      <div class="two-col-body">
+
+        <div class="left-col">
+          <div class="lc-cell"><span class="lc-route-num">1A</span></div>
+          <div class="lc-cell"><span class="lc-route-num">5B</span></div>
+          <div class="lc-cell"><span style="font-size:18px;font-weight:bold;letter-spacing:-0.5px;">296X</span></div>
+        </div>
+
+        <div class="right-col">
+
+          <div class="rc-row">
+            <div class="rc-info">
+              <div class="rt-dest">往 尖沙咀碼頭</div>
+              <div class="rt-stop">尖沙咀 廣東道</div>
+            </div>
+            <div class="rc-eta">
+              <div class="eta-group">
+                <div class="eta-row">
+                  <span class="eta-primary">1</span>
+                  <span class="eta-secondary">8</span>
+                  <span class="eta-secondary">22</span>
+                </div>
+                <span class="min-suffix">min</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rc-row">
+            <div class="rc-info">
+              <div class="rt-dest" style="font-size:15px;">往 堅尼地城海旁</div>
+              <div class="rt-stop">堅尼地城</div>
+            </div>
+            <div class="rc-eta">
+              <div class="eta-group">
+                <div class="eta-row">
+                  <span class="eta-primary">14</span>
+                  <span class="eta-secondary">31</span>
+                  <span class="eta-secondary">45</span>
+                </div>
+                <span class="min-suffix">min</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rc-row">
+            <div class="rc-info">
+              <div class="rt-dest">往 康城站</div>
+              <div class="rt-stop">將軍澳工業村</div>
+            </div>
+            <div class="rc-eta">
+              <div class="eta-group">
+                <div class="eta-row">
+                  <span class="eta-primary">--</span>
+                  <span class="eta-secondary">--</span>
+                  <span class="eta-secondary">--</span>
+                </div>
+                <span class="min-suffix">min</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="disp-divider"></div>
+
+      <div class="disp-footer">
+        <span>Updated 14:32:00</span>
+        <span>Next: 18s</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div><!-- /gallery-grid -->
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "routes": [
+    { "operator": "KMB", "route": "30X",  "stop_id": "92A8281D80524F78",
+      "stop_en": "Tai Ho Road Tsuen Wan", "stop_zh": "荃灣大河道",
+      "dest_en": "Whampoa Garden",       "dest_zh": "黃埔花園" },
+    { "operator": "KMB", "route": "238X", "stop_id": "88E1C9BB0B80711F",
+      "stop_en": "Riviera Gardens Bus Terminus", "stop_zh": "海濱花園總站",
+      "dest_en": "China Ferry Terminal", "dest_zh": "中港碼頭" },
+    { "operator": "CTB", "route": "930X", "stop_id": "003449",
+      "stop_en": "Luen Yan Street",     "stop_zh": "聯仁街",
+      "dest_en": "Causeway Bay",        "dest_zh": "銅鑼灣" }
+  ],
+  "refresh_seconds": 15
+}

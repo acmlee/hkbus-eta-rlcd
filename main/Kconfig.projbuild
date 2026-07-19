@@ -1,0 +1,11 @@
+config WIFI_SSID
+    string "WiFi SSID"
+    default ""
+    help
+        SSID of the Wi-Fi network to connect to.
+
+config WIFI_PASSWORD
+    string "WiFi Password"
+    default ""
+    help
+        Password for the Wi-Fi network.

@@ -1,0 +1,222 @@
+# Project: hk-bus-eta-rlcd
+
+## Fixed Technical Stack
+- Target: ESP32-S3-RLCD 4.2" (ST7305 driver, 400x300, 1-bit
+  monochrome, no backlight)
+- Framework: ESP-IDF (native), NOT Arduino
+- Display library: U8g2 — NOT LVGL (see design.md for rationale)
+- Data sources: KMB ETA Open API + Citybus ETA Open API (two
+  separate response shapes — never assume they're unified)
+- Config format: routes.json via SPIFFS, NOT hardcoded values
+- Time sync: SNTP, Asia/Hong_Kong (HKT, UTC+8)
+
+## File & Path Conventions
+- docs/waveshare-pinout.md, docs/ESP32-S3-RLCD-4.2-schematic.pdf,
+  docs/ST_7305_V0_2.pdf — board reference docs
+- PRD.md — source of truth for requirements; read first
+- design.md — source of truth for layout/rendering rules
+- HANDOFF.md — running session-state log; read first on resume,
+  update after every build
+
+## Waveshare Reference Repository
+
+- **Location**: `../waveshare-reference/` (git clone of
+  `waveshareteam/ESP32-S3-RLCD-4.2`)
+- **Primary driver reference**: `02_Example/ESP-IDF/11_U8G2_Test/
+  components/u8g2_st7305/` — This is the **official Waveshare U8g2
+  driver** for this board. Use its init sequence, SPI config, pixel
+  layout, and register values as the authoritative starting point.
+  Any deviation from this driver must be justified.
+- **Secondary references**:
+  - `02_Example/ESP-IDF/10_FactoryProgram/` — Factory firmware
+    using `DisplayPort` class (raw framebuffer + LUT-based pixel
+    mapping)
+  - `02_Example/XiaoZhi/XiaoZhiCode_V2.1.0/` — LVGL firmware with
+    `RLCD_SetPixel` and pixel lookup tables (40 MHz SPI)
+  - `02_Example/Arduino/10_U8G2_Test/` — Arduino variant of the
+    same custom U8g2 driver
+
+## ST7305 Register Values — Starting Point from Waveshare Reference
+
+The init sequence in `st7305_full_init()` inside
+`u8g2_st7305.c` is the **confirmed, working baseline** for this
+exact board. Our `display_init()` should reproduce these values
+exactly, not values from the generic datasheet §7.9.2:
+
+| Reg | Waveshare (u8g2_st7305) | Notes |
+|-----|------------------------|-------|
+| 0xC0 | `{0x11, 0x04}` | VGH=16.5V, VGL=-7.0V (GCTRL, §8.2.10) |
+| 0xC1 | `{0x69,0x69,0x69,0x69}` | VSHP = 5.80V (§8.2.11) |
+| 0xC2 | `{0x19,0x19,0x19,0x19}` | VSLP = 0.50V (§8.2.12) |
+| 0xC4 | `{0x4B,0x4B,0x4B,0x4B}` | VSHN = -4.00V (§8.2.13) |
+| 0xC5 | `{0x19,0x19,0x19,0x19}` | VSLN = 0.50V (§8.2.14, negative slope) |
+| 0xB2 | `{0x02}` | Frame rate HPM |
+| 0xB0 | `{0x64}` (100 decimal = 400 lines) | Duty setting |
+| 0x62 | `{0x32,0x03,0x1F}` | Gate timing (missing from our init) |
+| 0x3A | `{0x11}` (4GS — 4-grey-scale) | Pixel format |
+| 0x21 | Display Inversion ON | Command (missing from our init) |
+
+**Runtime note**: Registers 0xC0–C5 are the init-time baseline only. They are no longer varied at runtime — the voltage-profile switching feature has been removed (see HANDOFF.md for history).
+
+### CRITICAL: CASET/RASET and pixel layout
+Waveshare uses a **non-standard pixel layout**:
+- **`u8g2_ll_hvline_vertical_top_lsb`** + **`U8G2_R1`** (90° rotation)
+- CASET (0x2A): 2-byte format `{0x12, 0x2A}` mapping 24 columns of
+  12 pixels each (24×12 = 288 native, trimmed to 300 via rotation)
+- RASET (0x2B): 2-byte format `{0x00, 0xC7}` mapping 200 rows of
+  2 pixels each (200×2 = 400)
+- A custom DRAW_TILE callback remaps the U8g2 horizontal tile buffer
+  into the ST7305's native 12×4-pixel-group addressing using a 4×4
+  lookup table
+
+Our project currently uses a **row-major MSB-left** approach with
+standard 4-byte CASET/RASET. This is incompatible with copying
+Waveshare's register values directly. Any adoption of Waveshare's
+init values must be paired with the correct pixel layout strategy.
+
+### SPI configuration baseline
+- **SPI3_HOST** (not SPI2_HOST)
+- **24 MHz** clock (not 40 MHz)
+- **CS/DC managed manually via GPIO** (not hardware CS)
+- **`spi_device_polling_transmit`** (blocking, no queue)
+- **PSRAM** for display buffer allocation (8 MB available)
+
+### Reset timing
+- Waveshare: HIGH(50ms) → LOW(20ms) → HIGH(50ms)
+- Our code: LOW(10ms) → HIGH(120ms)
+
+## Dirty-Zone Partial-Write Optimization (REMOVED)
+The dirty-zone partial-write optimization (tile_overlaps_dirty_zone(),
+s_dirty_zone_mask, u8g2_st7305_set_dirty_zones()) was implemented
+and then removed due to a header/footer tile boundary bug that
+could not be reliably fixed. The DRAW_TILE callback now always
+writes every tile via SPI on every u8g2_SendBuffer() call. The
+Wi-Fi modem-sleep between cycles remains in place as the sole
+active power-saving feature. See HANDOFF.md for the session
+history of this feature's lifecycle.
+
+## Permanent Never List
+- Never use LVGL (this board has no PSRAM requirement assumption
+  and U8g2 is the confirmed library — see PRD.md Hardware
+  Constraints)
+- Never use generic ST7305 datasheet §7.9.2 init values — always
+  use the Waveshare reference driver values as the starting point
+  (see §ST7305 Register Values above). Any other
+  deviation from Waveshare reference values still requires
+  justification.
+- Never hardcode Wi-Fi credentials — always via config file
+- Never assume Citybus and KMB JSON shapes are interchangeable
+  (both are now route-specific, but their field naming and response
+  structures differ)
+- Never invent pin numbers not confirmed in docs/waveshare-pinout.md
+- Never store precomputed time-relative values (e.g. "minutes until
+  arrival") across task/render boundaries — always store raw epoch
+  timestamps and recompute at render time. Precomputed minutes go
+  stale between fetch cycles and compound error when a fetch is
+  delayed, retried, or jittered, causing the displayed countdown to
+  lag behind real time.
+- **Direction filtering**: KMB terminal stops return both outbound and
+  inbound ETAs. The `dest_en` field from routes.json is used with
+  `strcasecmp()` in `parse_kmb_response()` to filter out the opposite
+  direction. If `dest_en` is empty in routes.json, filtering is skipped
+  (all directions shown).
+- **ADC1 only, never ADC2, when Wi-Fi is active**: ADC2 conflicts with
+  the active Wi-Fi radio on the ESP32-S3. The battery voltage ADC uses
+  ADC1 (channel 3, GPIO4) exclusively. ADC_ATTEN_DB_12, curve-fitting
+  calibration via `adc_cali_create_scheme_curve_fitting`, 16-sample
+  averaging, 3× on-board voltage divider. Piecewise linear LUT (11-point
+  Li-ion discharge curve) for voltage-to-percentage mapping, with
+  hysteresis (1% deadband, first read always accepted) to prevent
+  display flicker from ADC noise. Error/uninitialized sentinel value is
+  255, displayed as `Battery:  --%` — never "0%".
+- **Never sample ADC during or near active Wi-Fi TX bursts**: The
+  ESP32-S3 Wi-Fi TX current draw (~300-400 mA peak) causes measurable
+  voltage sag on the shared battery rail. Any ADC/sensor reading that
+  coincides with a Wi-Fi TX event will capture a sagged voltage, not
+  the true resting voltage. This is a hardware-level caveat, not
+  specific to the battery feature — any future ADC sensor reading on
+  this board must either (a) sample during a confirmed Wi-Fi-idle
+  window (after `WIFI_PS_MIN_MODEM` re-enable with a settle delay),
+  or (b) apply median filtering to discard single TX-sag outliers.
+  Current battery implementation uses both (a) and (b):
+  `battery_sample_if_due()` is called from `eta_fetch_task` after
+  `WIFI_PS_MIN_MODEM`, with a 50 ms settle delay, rolling 5-sample
+  median filter, EMA (α=0.2), and two-reading confirmation for jumps
+  >6 points. `battery_get_percentage()` returns a cached value (no ADC
+  read).
+- **Never omit `esp_wifi_connect()` from the `WIFI_EVENT_STA_DISCONNECTED`
+  handler**: ESP-IDF has no built-in auto-reconnect. The
+  `failure_retry_cnt` field in `wifi_config_t` only controls the
+  initial connection during `esp_wifi_start()`, not runtime
+  reconnection. After a disconnect at runtime, the application must
+  call `esp_wifi_connect()` again — typically in the
+  `WIFI_EVENT_STA_DISCONNECTED` event handler — or Wi-Fi will stay
+  disconnected indefinitely. The standard ESP-IDF pattern is:
+  `esp_wifi_connect()` on both `WIFI_EVENT_STA_START` and
+  `WIFI_EVENT_STA_DISCONNECTED`, with a small backoff delay (e.g. 1 s)
+  to avoid log flooding on repeated disconnects.
+
+## Data Source Handling
+- KMB uses the route-specific `/eta/{stop_id}/{route}/{service_type}` endpoint
+  which returns only the requested route. Citybus uses `/eta/CTB/{stop_id}/{route}`
+  — both are route-specific, but the response shapes still differ in field naming
+  and structure, so parsing logic must not assume interchangeability.
+- Null ETA fields render as "--", never "0" (see PRD.md)
+
+## zh-HK CJK Font Support (WORKING — end-to-end verified)
+- Destination and bus-stop name fields render in **zh-HK Chinese** on
+  the physical display, verified end-to-end from `routes.json` →
+  `route_config.c` → `display.c` → ST7305.
+- **Custom fonts** (generated via `bdfconv` from U8g2 source):
+  - `u8g2_font_zhhk_dest_18` — 12pt WQY Bitmap Song, 27,618 glyphs, ~1.2MB
+  - `u8g2_font_zhhk_stop_13` — 9pt WQY Bitmap Song, 27,618 glyphs, ~766KB
+- **Coverage**: ASCII + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK
+  Extension A (U+3400–U+4DBF)
+- **Data flow**: `routes.json` provides `dest_zh`/`stop_zh` fields (zh-HK
+  text). `route_config.c` reads `dest_zh`/`stop_zh` first, falling back
+  to `dest_en`/`stop_en` only if the zh-HK field is absent or empty.
+  `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` for `dest_zh`
+  and `stop_zh` fields (CJK font first, ASCII fallback fonts for
+  pure-ASCII strings).
+- **Partition table**: factory app enlarged from 3 MB to 4 MB to
+  accommodate font data; storage partition moved to 0x410000.
+- **Total binary**: ~3.18 MB (0x31e2f0 bytes).
+- Font files: `main/fonts/u8g2_font_zhhk_dest_18.c`,
+  `main/fonts/u8g2_font_zhhk_stop_13.c`; header: `main/fonts/fonts.h`.
+- `U8G2_USE_LARGE_FONTS` compile definition added to
+  `main/CMakeLists.txt` to support the large font data arrays.
+- The English-interim Helvetica fonts (`u8g2_font_helvB14_tr`/
+  `u8g2_font_helvR10_tr`) remain as a fallback path for pure-ASCII
+  strings (e.g. if `dest_zh` is absent in `routes.json`).
+- **"往" prefix**: The destination line is prefixed with "往" (drawn
+  in the stop-font size, `u8g2_font_zhhk_stop_13`) to indicate
+  direction, followed by the destination name in `u8g2_font_zhhk_dest_18`.
+- **ETA fonts**: eta1 (soonest) uses `u8g2_font_profont29_mf` (29px bold),
+  eta2/eta3 use `u8g2_font_profont17_mf` (17px regular). The "min" suffix
+  remains `u8g2_font_profont12_mf`.
+
+## Code Style
+- esp_err_t checked on every ESP-IDF call, no silent failures
+- No unbounded buffers; validate JSON field presence before use
+- Comment any placeholder/stub function explicitly as such
+
+## Session Workflow
+- Read HANDOFF.md first on session resume to identify last completed
+  step and next action
+- After any code-generation task (writing/modifying .c/.h,
+  CMakeLists.txt, or sdkconfig):
+
+  Update HANDOFF.md §3 (Build Status) and §1 (Last Completed Step) to reflect the verified outcome
+  
+  - Do not regenerate the entire file — only update relevant sections
+
+## ETA Fonts (current)
+- eta1 (soonest): `u8g2_font_profont29_mf` (29px, bold)
+- eta2, eta3: `u8g2_font_profont17_mf` (17px, regular)
+- "min" suffix: `u8g2_font_profont12_mf` (unchanged)
+
+## Display Refresh
+- Display renders at wall-clock `:00`/`:15`/`:30`/`:45` boundaries (15s interval)
+- ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
+- Refresh interval configured via `routes.json` `refresh_seconds`
+

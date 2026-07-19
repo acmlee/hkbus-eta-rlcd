@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mockup — hk-bus-eta-rlcd Option A (Stacked List)</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #fff;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: pixelated;
+  padding: 40px 32px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  font-size: 11px;
+  margin-bottom: 32px;
+}
+.viewer {
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.frame-1x {
+  width: 400px;
+  height: 300px;
+  background: #fff;
+  border: 1px solid #000;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: pixelated;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.frame-label {
+  font-size: 9px;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+.frame-2x {
+  width: 800px;
+  height: 600px;
+  background: #fff;
+  border: 1px solid #000;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  position: relative;
+}
+.frame-2x .mockup-contents {
+  transform: scale(2);
+  transform-origin: top left;
+  width: 400px;
+  height: 300px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.mockup-contents {
+  display: flex;
+  flex-direction: column;
+  width: 400px;
+  height: 300px;
+  background: #fff;
+}
+
+/* ── Header band (design.md §3 rule 1) ── */
+.disp-header {
+  background: #000;
+  color: #fff;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.disp-header .header-label {
+  font-size: 15px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+.disp-header .header-time {
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+/* ── 1px divider between rows ── */
+.disp-divider {
+  height: 1px;
+  min-height: 1px;
+  background: #000;
+  width: 100%;
+}
+
+/* ── Route row (81px × 3 = 243; 300 - 36 - 3 - 18 = 243) ── */
+.route-row {
+  display: flex;
+  width: 100%;
+  height: 81px;
+  min-height: 81px;
+  align-items: center;
+}
+
+/* Col 1 — route number (fixed ~60px, bold, 24px, left-aligned) */
+.route-col-route {
+  width: 60px;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 8px;
+  align-self: stretch;
+}
+.route-col-route .rt-num {
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+/* Col 2 — destination + bus-stop stacked (elastic) */
+.route-col-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 16px;
+  align-self: stretch;
+}
+.route-col-info .rt-dest {
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.route-col-info .rt-stop {
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.3;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+/* Col 3 — three ETA values (fixed ~120px, right-aligned, spaced) */
+.route-col-eta {
+  width: 120px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding-right: 10px;
+  align-self: stretch;
+}
+.eta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;  /* visible gap between each ETA value */
+}
+.eta-primary {
+  font-size: 29px;
+  font-weight: bold;
+  line-height: 1;
+  letter-spacing: -0.3px;
+}
+.eta-secondary {
+  font-size: 17px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: -0.3px;
+  min-width: 18px;
+}
+.min-suffix {
+  font-size: 9px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  margin-top: 1px;
+}
+
+/* ── Footer band ── */
+.disp-footer {
+  background: #000;
+  color: #fff;
+  height: 18px;
+  min-height: 18px;
+  padding: 0 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: 0;
+  gap: 12px;
+}
+.disp-footer .sleep-status {
+  margin-right: auto;
+}
+
+/* ── Controls ── */
+.controls {
+  margin-top: 32px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.controls button {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  padding: 6px 16px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+.controls button:hover {
+  background: #000;
+  color: #fff;
+}
+.controls button.active {
+  background: #000;
+  color: #fff;
+}
+.controls .set-label {
+  font-size: 11px;
+  margin-left: 4px;
+  letter-spacing: 0.3px;
+}
+</style>
+</head>
+<body>
+
+<h1>hk-bus-eta-rlcd &middot; Option A &mdash; Stacked List</h1>
+<p class="subtitle">Finalized design &middot; 400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; per design.md &sect;3 &middot; zh-HK CJK text (WenQuanYi Bitmap Song)</p>
+
+<div class="viewer">
+  <div>
+    <div class="frame-label">1× (actual size)</div>
+    <div class="frame-1x" id="mockup1x"></div>
+  </div>
+  <div>
+    <div class="frame-label">2× zoom</div>
+    <div class="frame-2x" id="mockup2x"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <span style="font-size:11px;font-weight:bold;letter-spacing:0.3px;">Data set:</span>
+  <button id="btnSet1" class="active" onclick="switchDataSet(1)">Set 1</button>
+  <button id="btnSet2" onclick="switchDataSet(2)">Set 2</button>
+  <button id="btnSet3" onclick="switchDataSet(3)">Set 3</button>
+  <span class="set-label" id="setLabel">3 routes, 1 with "--"</span>
+</div>
+
+<script>
+const dataSets = {
+  1: {
+    label: '3 routes, 1 with "--" (matches routes.json)',
+    time: '14:32',
+    updated: '14:32:00',
+    battery: 72,
+    sleepStatus: 'Sleep in 12 min',
+    routes: [
+      { num: '30X',  dest: '黃埔花園', stop: '楊屋道街市', e1: '3',  e2: '12', e3: '25' },
+      { num: '238X', dest: '中港碼頭', stop: '龍德街',     e1: '8',  e2: '19', e3: '34' },
+      { num: '930X', dest: '銅鑼灣',   stop: '聯仁街',     e1: '--', e2: '--', e3: '--' }
+    ]
+  },
+  2: {
+    label: 'font-shrink stress test (long zh-HK strings)',
+    time: '15:07',
+    updated: '15:07:22',
+    battery: 100,
+    sleepStatus: 'Morning Window',
+    routes: [
+      { num: '2',   dest: '中環碼頭',           stop: '中環五號碼頭',   e1: '5',  e2: '15', e3: '28' },
+      { num: '5B',  dest: '堅尼地城海旁',       stop: '堅尼地城',       e1: '10', e2: '22', e3: '40' },
+      { num: '23',  dest: '西營盤',             stop: '西營盤',         e1: '1',  e2: '7',  e3: '18' }
+    ]
+  },
+  3: {
+    label: 'all live ETAs, 1-digit battery (pad test)',
+    time: '18:45',
+    updated: '18:45:10',
+    battery: 9,
+    sleepStatus: 'Sleep in 3 min',
+    routes: [
+      { num: '1',   dest: '中環',         stop: '中環碼頭',           e1: '2',  e2: '9',  e3: '15' },
+      { num: '101', dest: '堅尼地城',     stop: '堅尼地城',           e1: '7',  e2: '18', e3: '30' },
+      { num: '296X',dest: '康城站',       stop: '將軍澳工業邨',       e1: '4',  e2: '11', e3: '22' }
+    ]
+  }
+};
+
+function buildMockup(d) {
+  // Col 2 available ≈ 400 - 60(route) - 120(eta) - 8(padding left) - 10(padding right) - 16(Col 2 left pad) = ~186px
+  const availWidth = 186;
+  const destShrink = function(text, baseSize) {
+    const est = function(s) {
+      return [...text].reduce(function(w, c) {
+        // CJK chars ~1em, ASCII chars ~0.5em
+        return w + (c.charCodeAt(0) > 0x7F ? s * 1.0 : s * 0.5);
+      }, 0);
+    };
+    if (est(baseSize) <= availWidth) return baseSize;
+    for (var s = baseSize - 1; s >= 14; s--) { if (est(s) <= availWidth) return s; }
+    return 14;
+  };
+  const stopShrink = function(text, baseSize) {
+    const est = function(s) {
+      return [...text].reduce(function(w, c) {
+        return w + (c.charCodeAt(0) > 0x7F ? s * 1.0 : s * 0.5);
+      }, 0);
+    };
+    if (est(baseSize) <= availWidth) return baseSize;
+    for (var s = baseSize - 1; s >= 11; s--) { if (est(s) <= availWidth) return s; }
+    return 11;
+  };
+
+  var html = '';
+  html += '<div class="disp-header">';
+  html += '<span class="header-label">HK Bus ETA</span>';
+  html += '<span class="header-time">' + d.time + '</span>';
+  html += '</div>';
+
+  d.routes.forEach(function(r, i) {
+    if (i > 0) html += '<div class="disp-divider"></div>';
+    var destSize = destShrink(r.dest, 18);
+    var stopSize = stopShrink(r.stop, 13);
+
+    html += '<div class="route-row">';
+    html += '<div class="route-col-route"><span class="rt-num">' + r.num + '</span></div>';
+    html += '<div class="route-col-info">';
+    html += '<div class="rt-dest" style="font-size:' + destSize + 'px;"><span style="font-size:' + stopSize + 'px;">往</span> ' + r.dest + '</div>';
+    html += '<div class="rt-stop" style="font-size:' + stopSize + 'px;">' + r.stop + '</div>';
+    html += '</div>';
+    html += '<div class="route-col-eta">';
+    html += '<div class="eta-row">';
+    html += '<span class="eta-primary">' + r.e1 + '</span>';
+    html += '<span class="eta-secondary">' + r.e2 + '</span>';
+    html += '<span class="eta-secondary">' + r.e3 + '</span>';
+    html += '</div>';
+    html += '<span class="min-suffix">min</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  html += '<div class="disp-divider"></div>';
+  html += '<div class="disp-footer">';
+  html += '<span>Updated ' + d.updated + '</span>';
+  if (d.sleepStatus) {
+    html += '<span class="sleep-status">' + d.sleepStatus + '</span>';
+  }
+  html += '<span>Battery: ' + String(d.battery).padStart(3, ' ') + '%</span>';
+  html += '</div>';
+
+  return html;
+}
+
+function switchDataSet(n) {
+  var d = dataSets[n];
+  if (!d) return;
+  var html = buildMockup(d);
+  document.getElementById('mockup1x').innerHTML = html;
+  document.getElementById('mockup2x').innerHTML = '<div class="mockup-contents">' + html + '</div>';
+  document.querySelectorAll('.controls button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('btnSet' + n).classList.add('active');
+  document.getElementById('setLabel').textContent = d.label;
+}
+
+switchDataSet(1);
+</script>
+
+</body>
+</html>
