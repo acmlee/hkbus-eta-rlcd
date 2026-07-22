@@ -120,7 +120,7 @@ Example from the repository:
       "stop_en": "Luen Yan Street",      "stop_zh": "聯仁街",
       "dest_en": "Causeway Bay",         "dest_zh": "銅鑼灣" }
   ],
-  "refresh_seconds": 15
+  "refresh_seconds": 10
 }
 ```
 
@@ -131,7 +131,7 @@ Example from the repository:
 | `stop_id` | Stop ID for the API endpoint. KMB uses hex IDs; Citybus uses numeric IDs. Obtain these from the respective open data portals. |
 | `stop_zh` / `stop_en` | Bus-stop name in Traditional Chinese and English. `stop_zh` is rendered first; `stop_en` is used as fallback if `stop_zh` is absent or empty. |
 | `dest_zh` / `dest_en` | Destination label. `dest_zh` is rendered first. For KMB terminal stops, `dest_en` is also used for direction filtering (case-insensitive matching) to exclude the opposite-direction ETAs returned by the API. |
-| `refresh_seconds` | Display render interval in seconds. The ETA fetch interval is independent (~30 s). |
+| `refresh_seconds` | Display render interval in seconds. Must be a divisor of 60 (e.g. 10, 12, 15, 20, 30) for clean wall-clock boundary alignment. Invalid values are rejected at boot with a warning and clamped to 10 s. The ETA fetch interval is independent (~30 s). |
 
 ### Wi-Fi
 
@@ -152,7 +152,8 @@ The firmware runs two independent FreeRTOS tasks after boot:
 - **`display_task`** (priority: `tskIDLE_PRIORITY+3`) — Owns wall-clock render boundary
   alignment, daily NTP resync, and `render_dashboard()`. Reads
   from the **active** double-buffer and never waits for network data. Re-renders the
-  display on `:00`/`:15`/`:30`/`:45` boundaries.
+  display on wall-clock boundaries (interval from `routes.json` `refresh_seconds`,
+  must be a divisor of 60).
 
 The two tasks share ETA data through a lock-free double-buffer mechanism: two full
 `route_data_t[3]` arrays plus an atomically-swapped word-sized active index. No mutex

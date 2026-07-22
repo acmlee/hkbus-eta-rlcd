@@ -6,7 +6,7 @@
 
 ## 1. Last Completed Step
 
-- **[2026-07-20] Warning message fixed — no longer misleadingly blames direction filter** — Changed the "all N entries filtered by dest_en" warning to "all N entries skipped (no usable ETAs)" since the actual cause is often missing `eta` fields, not direction filtering. The code logic is unchanged — entries are correctly skipped for three reasons (missing eta, direction filter, parse failure). The warning was the only misleading part. Build: PASS, binary 0x3215d0 bytes (~3.21 MB, 22% free). No new warnings.
+- **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
 
 - **[2026-07-20] Diagnostic ESP_LOGD added to parse_kmb_response()** — Added per-entry debug logging in the KMB parse loop to diagnose why all entries are being skipped (showing "--" for KMB routes). Each entry now logs: `eta` raw value, `api_dest`, `cfg_dest`, filter result (MATCH/MISMATCH), parse result, and final disposition (accepted/skipped with reason). Three skip reasons: missing eta, direction filter, parse_eta_epoch failure. Build: PASS, binary 0x3215f0 bytes (~3.21 MB, 22% free). No new warnings. User to flash and run with DEBUG log level to diagnose.
 
@@ -46,19 +46,15 @@
 
 | File | Change |
 |------|--------|
-| `components/u8g2_st7305/u8g2_st7305.c` | **Modified** — Removed `st7305_voltage_profile_high[]`, `st7305_voltage_profile_low[]`, `u8g2_st7305_set_voltage_profile()`. |
-| `components/u8g2_st7305/u8g2_st7305.h` | **Modified** — Removed `u8g2_st7305_set_voltage_profile()` declaration. |
-| `main/main.c` | **Modified** — Removed `last_voltage_profile_high`, voltage-profile check block, updated doc comment. |
-| `PRD.md` | **Modified** — Deleted FR #13, updated §6 arch, §6 task ownership, §7 power/battery, §10 Decision #7 to "Removed", §10 Open #5 to independent feature. |
-| `CLAUDE.md` | **Modified** — Removed "Runtime Voltage Profile Switching" section, updated runtime note and Never List. |
-| `main/eta_fetcher.c` | **Modified** — Added per-entry ESP_LOGD diagnostics in `parse_kmb_response()` loop (3 skip reasons + accepted). |
+| `main/route_config.c` | **Modified** — Added `60 % val == 0` validation with clamp-to-10 fallback. |
+| `main/main.c` | **Modified** — Added `s_refresh_interval` static, set once in `app_main()`, used in `display_task()` boundary calculation. |
 | `HANDOFF.md` | **Modified** — This file. Added session entry, build status. |
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x3215d0 bytes (~3.21 MB, factory app 4 MB partition, 22% free). Fixed warning message in `parse_kmb_response()`: no longer misleadingly blames direction filter when entries are skipped for other reasons. No new warnings. Binary size regression within noise (0x3215f0 → 0x3215d0, -32 bytes).
+- **Last build**: PASS — `idf.py build` completed. Binary 0x321650 bytes (~3.21 MB, factory app 4 MB partition, 22% free). Display refresh interval centralised in `routes.json` with validation. No new warnings. Binary size change within noise (0x3215c0 → 0x321650, +144 bytes).
 
 ---
 

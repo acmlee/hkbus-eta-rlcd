@@ -83,9 +83,16 @@ int route_config_load(route_config_t config[], int max_count)
     }
 
     /* Read refresh_seconds (optional, default 30) */
+    /* Must divide 60 evenly for clean wall-clock boundary alignment. */
     cJSON *refresh_item = cJSON_GetObjectItem(root, "refresh_seconds");
     if (cJSON_IsNumber(refresh_item)) {
-        refresh_interval = refresh_item->valueint;
+        int val = refresh_item->valueint;
+        if (val > 0 && 60 % val == 0) {
+            refresh_interval = val;
+        } else {
+            ESP_LOGW(TAG, "refresh_seconds=%d does not divide 60 evenly, clamping to 10", val);
+            refresh_interval = 10;
+        }
         ESP_LOGI(TAG, "refresh_interval = %d s", refresh_interval);
     }
 

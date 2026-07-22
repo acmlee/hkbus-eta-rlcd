@@ -2,7 +2,7 @@
 
 ## 1. Project Goal
 
-Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP32-S3-RLCD 4.2" board. The device fetches real-time arrival estimates from KMB and Citybus open APIs for exactly three fixed routes, renders them on the reflective ST7305 display with large, legible text, and refreshes the display every 15 seconds (on :00/:15/:30/:45 boundaries) while fetching ETA data every ~30 seconds (jittered). No touch, no audio, no OTA — a single-purpose appliance that shows "when's the next bus" at a glance.
+Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP32-S3-RLCD 4.2" board. The device fetches real-time arrival estimates from KMB and Citybus open APIs for exactly three fixed routes, renders them on the reflective ST7305 display with large, legible text, and refreshes the display every 10 seconds (on :00/:10/:20/:30/:40/:50 boundaries) while fetching ETA data every ~30 seconds (jittered). No touch, no audio, no OTA — a single-purpose appliance that shows "when's the next bus" at a glance.
 
 ## 2. Hardware Constraints
 
@@ -15,7 +15,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
 | **Text / font rendering** | U8g2 library in *page-buffer mode* (no full framebuffer allocation). zh-HK CJK font support **working end-to-end** — destination and bus-stop name fields render zh-HK Chinese (e.g. 黃埔花園, 海濱花園總站). `route_config.c` reads `dest_zh`/`stop_zh` from `routes.json` (falls back to `dest_en`/`stop_en` if absent). See CLAUDE.md §zh-HK CJK Font Support for font specs (file names, glyph coverage, partition layout). The 8 MB PSRAM is *available* but the software shall not *depend* on PSRAM for core function; PSRAM may be used optionally for font caching if needed, but must gracefully degrade if PSRAM init fails. |
 | **GUI framework** | **No LVGL or any other full-featured GUI framework.** Text rendering is handled directly via U8g2 primitives. |
 | **Wireless** | Wi-Fi 4 (802.11n, 2.4 GHz), built-in ceramic antenna. BLE unused in this version. |
-| **Power** | Primary: battery (fixed installation, not portable; USB Type-C present for charging and firmware flashing). Active power-saving: Wi-Fi modem-sleep (`WIFI_PS_MIN_MODEM`) between fetch cycles. Deep-sleep intentionally NOT used — the device maintains a persistent Wi-Fi connection, with ETA fetch every ~30 s and display render every 15 s. Tier 2/3 deferred (see §10). |
+| **Power** | Primary: battery (fixed installation, not portable; USB Type-C present for charging and firmware flashing). Active power-saving: Wi-Fi modem-sleep (`WIFI_PS_MIN_MODEM`) between fetch cycles. Deep-sleep intentionally NOT used — the device maintains a persistent Wi-Fi connection, with ETA fetch every ~30 s and display render every 10 s. Tier 2/3 deferred (see §10). |
 | **RTC** | Onboard PCF85063 RTC chip present but not required for core ETA display (SNTP suffices). May be leveraged in a future revision to reduce SNTP polling. |
 | **MicroSD** | Slot present on board but left **unused** in this version. |
 | **Audio / mic** | ES7210 + ES8311, dual-mic array — entirely unused in this version. |
@@ -28,7 +28,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
 4. **Load route configuration** — On startup, read `routes.json` from the SPIFFS partition. The file defines exactly 3 routes (a mix of KMB and Citybus), each with: operator, stop ID, route number, destination label (zh-HK via `dest_zh`, with `dest_en` fallback), and bus-stop name (zh-HK via `stop_zh`, with `stop_en` fallback). If the file is missing or corrupt, show a persistent error message on the display and halt further ETA fetching.
 5. **Fetch KMB ETA** — For each KMB route, HTTP GET the KMB route-specific ETA endpoint. Parse the earliest `eta` and store the raw ISO 8601 timestamp as a `time_t` epoch value — do not precompute minutes at fetch time. When the stop is a terminal where the API returns both directions, filter to keep only the configured destination (case-insensitive `dest_en` comparison). Implementation: see CLAUDE.md §Data Source Handling and §Permanent Never List (Direction filtering).
 6. **Fetch Citybus ETA** — For each Citybus route, HTTP GET `https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/{stop_id}/{route}`. The response already contains only the requested route. Parse the earliest `eta` timestamp and store the raw ISO 8601 timestamp as a `time_t` epoch value — do not precompute minutes at fetch time.
-7. **Render dashboard** — On wall-clock boundaries (15 s interval), draw the following zones on the 400 × 300 display (decoupled from the ETA fetch cycle — always renders the last known ETA values). Current boundary times and refresh cadence: see CLAUDE.md §Display Refresh. Minutes-remaining are computed fresh at render time from the stored raw epoch timestamps and the current wall-clock time — never from precomputed values stored at fetch time:
+7. **Render dashboard** — On wall-clock boundaries (10 s interval), draw the following zones on the 400 × 300 display (decoupled from the ETA fetch cycle — always renders the last known ETA values). Current boundary times and refresh cadence: see CLAUDE.md §Display Refresh. Minutes-remaining are computed fresh at render time from the stored raw epoch timestamps and the current wall-clock time — never from precomputed values stored at fetch time:
     - **Header** (top ~8%): Current local time in `HH:MM` format, large font.
     - **Route rows** (middle ~80%): Up to 3 rows, each showing:
         - Route number (e.g. "1A"), medium-bold font
@@ -37,7 +37,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
     - **Footer** (bottom ~10%): "Updated HH:MM:SS" on the left, "Battery: XX%" (battery percentage) on the right.
     - **Reconnecting banner**: If Wi-Fi is lost mid-operation, overlay or insert a "Reconnecting..." banner row immediately below the header. Keep the last known ETA values on screen but visually greyed out (e.g. inverse/dimmed style). The banner persists until Wi-Fi reconnects — no auto-dismiss.
 8. **Error handling per operator** — If one operator's API fails (network error, HTTP non-200, timeout) while the other succeeds, the last-known-good ETA values for the failed operator's routes are preserved on screen for up to 3 minutes (measured from the ETA timestamp, not the fetch time). If the stale ETA is more than 3 minutes in the past, it expires to "--". The working operator's routes fetch and display normally. Do *not* halt the entire refresh cycle.
-9. **Refresh cadence** — The ETA fetch cycle and the display render cycle are **decoupled**. The display re-renders on wall-clock boundaries (15 s interval) so the header clock stays precisely aligned regardless of network/HTTP fetch latency. The ETA fetch runs on a longer cadence (~30 s, jittered). Always render the last known ETA values — never block the render cycle waiting for a fresh fetch. Current values: see CLAUDE.md §Display Refresh.
+9. **Refresh cadence** — The ETA fetch cycle and the display render cycle are **decoupled**. The display re-renders on wall-clock boundaries so the header clock stays precisely aligned regardless of network/HTTP fetch latency. The interval is read from `routes.json` `refresh_seconds` and must be a divisor of 60 for clean wall-clock alignment (invalid values are clamped to 10 s). The ETA fetch runs on a longer cadence (~30 s, jittered). Always render the last known ETA values — never block the render cycle waiting for a fresh fetch. Current values: see CLAUDE.md §Display Refresh.
 10. **Boot-to-display target** — From power-on to the first fully rendered ETA dashboard, the device should take no more than **10 seconds**. If Wi-Fi or SNTP is slow, show the partial state (time only or "Connecting..." message) within 10 s rather than a blank screen.
 11. **Null ETA display** — If a route has no available ETA (API returns no data, or the next bus is beyond the API's reporting horizon), display "--" for that route. Never display "0" as a substitute for "no data".
 12. **Daily NTP resync** — Once per day at 06:00 local time, trigger a one-shot SNTP resync to correct clock drift accumulated over 24+ hours of uptime. The resync is blocking but bounded (10 s max retry); if it times out, log a warning and continue normally — do not crash or hang. The "once per day" guard uses day-of-year tracking so the resync fires exactly once per day, with one retry attempt per day regardless of prior success/failure.
@@ -117,7 +117,7 @@ Two full `route_data_t[3]` buffers (`s_route_buf[2][3]`) plus an atomically-swap
 |---|---|
 | ETA fetch loop (HTTP, JSON parsing) | `eta_fetch_task` |
 | Wi-Fi modem-sleep toggling (`WIFI_PS_NONE`/`WIFI_PS_MIN_MODEM`) | `eta_fetch_task` |
-| Wall-clock `:00`/`:15`/`:30`/`:45` alignment | `display_task` |
+| Wall-clock boundary alignment (interval from `routes.json` `refresh_seconds`, must divide 60) | `display_task` |
 | Daily NTP resync at 06:00 | `display_task` |
 | `render_dashboard()` and all render helpers | `display_task` |
 
@@ -125,7 +125,7 @@ Two full `route_data_t[3]` buffers (`s_route_buf[2][3]`) plus an atomically-swap
 
 | Requirement | Specification |
 |---|---|
-| **Refresh interval** | ETA fetch and display render are decoupled. Display re-renders on wall-clock boundaries (15 s interval) so the header clock stays aligned. ETA fetch runs ~30 s ±10% jitter. Never block the render cycle waiting for a fetch — always render the last known ETA values. Current values: see CLAUDE.md §Display Refresh. |
+| **Refresh interval** | ETA fetch and display render are decoupled. Display re-renders on wall-clock boundaries (interval configurable via `routes.json` `refresh_seconds`, must be a divisor of 60) so the header clock stays aligned. ETA fetch runs ~30 s ±10% jitter. Never block the render cycle waiting for a fetch — always render the last known ETA values. Current values: see CLAUDE.md §Display Refresh. |
 | **Boot time** | ≤ 10 s from power-on to first ETA dashboard render. If network is slow, show partial state (e.g. "Connecting...") within 10 s. |
 | **Wi-Fi reconnect** | On disconnect: show "Reconnecting..." banner immediately, retain last known ETA greyed out. Reconnect automatically (infinite retry, 5 s backoff between attempts). Banner persists until successfully reconnected — no auto-dismiss. |
 | **SNTP failure** | If SNTP sync fails or is delayed beyond boot window, the dashboard shows "HH:MM" as "----" (unsynced indicator). Normal time display resumes once sync completes on the next refresh cycle. |

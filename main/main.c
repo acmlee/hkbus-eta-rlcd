@@ -72,6 +72,10 @@ static volatile int  s_active_buf_idx = 0;   /* 0 or 1, word-sized atomic */
 static route_config_t s_routes[MAX_ROUTES];
 static int            s_route_count = 0;
 
+/* Display refresh interval (seconds) — read from routes.json once,
+ * validated to divide 60 evenly for clean wall-clock boundaries. */
+static int s_refresh_interval = 10;
+
 /* ------------------------------------------------------------------
  * Wi-Fi station — connect with retries using EventGroup
  * ----------------------------------------------------------------*/
@@ -415,9 +419,9 @@ static void display_task(void *arg)
             if (pct != 255) battery_pct = pct;
         }
 
-        /* ---- 6. Compute seconds until next :00, :15, :30 or :45 boundary ---- */
+        /* ---- 6. Compute seconds until next wall-clock boundary ---- */
         int sec = ti->tm_sec;
-        int next_seconds = 15 - (sec % 15);
+        int next_seconds = s_refresh_interval - (sec % s_refresh_interval);
 
         /* ---- 7. Render the dashboard ---- */
         render_dashboard(time_str, last_updated, battery_pct,

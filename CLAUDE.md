@@ -216,7 +216,7 @@ history of this feature's lifecycle.
 - "min" suffix: `u8g2_font_profont12_mf` (unchanged)
 
 ## Display Refresh
-- Display renders at wall-clock `:00`/`:15`/`:30`/`:45` boundaries (15s interval)
+- Display renders at configurable wall-clock boundaries (read from `routes.json` `refresh_seconds`). Valid values are divisors of 60 (e.g. 10, 12, 15, 20, 30) — any value that does not divide 60 evenly is rejected at boot with a warning and clamped to 10 s.
 - ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
 - Refresh interval configured via `routes.json` `refresh_seconds`
 

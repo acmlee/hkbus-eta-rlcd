@@ -10,5 +10,5 @@
       "stop_en": "Luen Yan Street",     "stop_zh": "聯仁街",
       "dest_en": "Causeway Bay",        "dest_zh": "銅鑼灣" }
   ],
-  "refresh_seconds": 15
+  "refresh_seconds": 10
 }
