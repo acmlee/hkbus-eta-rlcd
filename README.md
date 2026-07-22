@@ -24,9 +24,6 @@ display showing "when's the next bus" without needing to pull out a phone.
   exponential smoothing, and Wi-Fi-idle-window sampling to avoid false readings from TX
   voltage sag. **Not a precision fuel gauge** — uses a generic discharge curve, not
   per-cell calibration.
-- **Time-based display voltage/contrast switching** — High-contrast mode during the morning
-  check-before-leaving window (06:00–10:00); low-voltage/dim profile at other hours for
-  reduced power draw and reflective glare.
 - **Decoupled task architecture** — ETA fetching and display rendering run as independent
   FreeRTOS tasks. The display re-renders on wall-clock boundaries (every 15 seconds) and
   never waits for network data. ETAs are shared via a lock-free double buffer.
@@ -66,7 +63,7 @@ back-end derived from the Waveshare official reference driver.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/hk-bus-eta-rlcd.git
+git clone https://github.com/acmlee/hk-bus-eta-rlcd.git
 cd hk-bus-eta-rlcd
 
 # 2. Set the target chip
@@ -153,7 +150,7 @@ The firmware runs two independent FreeRTOS tasks after boot:
   with ±10% randomised jitter. Writes results into the **inactive** half of a double
   buffer, then atomically flips the active index.
 - **`display_task`** (priority: `tskIDLE_PRIORITY+3`) — Owns wall-clock render boundary
-  alignment, voltage-profile switching, daily NTP resync, and `render_dashboard()`. Reads
+  alignment, daily NTP resync, and `render_dashboard()`. Reads
   from the **active** double-buffer and never waits for network data. Re-renders the
   display on `:00`/`:15`/`:30`/`:45` boundaries.
 
