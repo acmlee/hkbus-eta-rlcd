@@ -27,6 +27,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 | Role | Min glyph height | U8g2 weight | Example |
 |---|---|---|---|
 | Header time (HH:MM) | 32 px | Bold | `u8g2_font_logisoso32_tf` |
+| Header temperature (NN°C) | 22 px | Bold | `u8g2_font_profont22_mf` |
 | Header label ("HK Bus ETA") | 14–16 px | Regular | `u8g2_font_profont15_mf` |
 | Route number | 24 px | Bold | `u8g2_font_profont22_mf` |
 | Destination (zh-HK) | 18 px | Bold | `u8g2_font_zhhk_dest_18` (custom WQY Bitmap Song) |
@@ -63,7 +64,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 ┌──────────────────────────────────────────────────────────┐
 │ HEADER BAND (solid black bg, white text, ~36 px high)          │ ← top ~12%
-│ HK Bus ETA                    14:32                            │
+│ HK Bus ETA  28°C                             14:32             │
 ├──────────────────────────────────────────────────────────┤ ← 1px dividing line
 │ 1A 往 尖沙咀碼頭 5 8 14 │
 │ 尖沙咀 廣東道 min │ ← 3 rows,
@@ -81,7 +82,11 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 ### Structural rules
 
-1. **Header band** — Full-width filled black rect, ~36 px high. Two text elements: **"HK Bus ETA"** left-aligned (regular weight, ~16 px), **current time HH:MM** right-aligned (bold, ~22–24 px), both white-on-black with generous padding (≥12 px left/right). No icon, no other label.
+1. **Header band** — Full-width filled black rect, ~36 px high. Three text elements, all white-on-black with ≥12 px left/right padding:
+   - **"HK Bus ETA"** left-aligned, regular weight, ~10 px (`u8g2_font_helvR10_tr`).
+   - **Temperature (NN°C)** positioned ~16 px right of the title text, bold, 22 px (`u8g2_font_profont22_mf`). Shares the title's baseline (y=24). Omitted entirely when data is unavailable or stale (see §8).
+   - **Current time HH:MM** right-aligned, bold, 32 px (`u8g2_font_logisoso32_tf`).
+   - No icon, no other label. Temperature must never overlap the time element.
 2. **Route rows** — Column layout with explicit column boundaries:
     - **Col 1** (route number): fixed width ~48 px, left-aligned, bold, vertically centred across the full row height. At least 16 px gap between Col 1 and Col 2.
     - **Col 2** (destination + bus-stop, stacked): elastic, fills remaining space up to the ETA column. 16 px left padding from Col 1 boundary.
@@ -147,7 +152,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Text sizes meet the minimums in §2 for their role.
 - [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_18` and `u8g2_font_zhhk_stop_13` are compiled into the firmware.
 - [ ] Header and footer are solid black bands with white inverted text.
-- [ ] Header shows "HK Bus ETA" left-aligned and current time HH:MM right-aligned.
+- [ ] Header shows "HK Bus ETA" left-aligned, temperature (NN°C) to the right of the title at 22 px bold, and current time HH:MM right-aligned at 32 px bold. Temperature is omitted entirely when data is unavailable or stale.
 - [ ] Route rows have exactly 1 px horizontal dividers between them — no vertical dividers, no box borders.
 - [ ] Each route row shows exactly 3 ETA values, right-aligned in a fixed-width column group.
 - [ ] The 1st (soonest) ETA value is visually larger/bolder than the 2nd and 3rd values.
@@ -161,3 +166,16 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Date/time format: `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
 - [ ] The boot flash (500 ms all-pixels-on) is the only transition — no animations elsewhere.
 - [ ] Checkerboard dither (if used) is applied only to the route content area, never to the header or footer bands.
+
+---
+
+## 8. External Data: Temperature
+
+The header temperature element is sourced from the Hong Kong Observatory (HKO) "Current Weather Report" open data API (`rhrread`). It is **not** a bus-ETA data source — it is ambient context.
+
+- **Source**: `https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`
+- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`).
+- **Fetch cadence**: Every 20th `eta_fetch_task` cycle (~10 min), piggybacked on the existing Wi-Fi-awake window — no separate task.
+- **Stale TTL**: 30 minutes. If the last successful fetch is older than 30 min, temperature is hidden (not shown as stale or placeholder).
+- **Format**: `NN°C` (e.g. `28°C`), 22 px bold, `u8g2_font_profont22_mf`. Omitted entirely when data is unavailable.
+- **Failure behaviour**: Hide. No placeholder, no `--°C`. The header reverts to title + time only.
