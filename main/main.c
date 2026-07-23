@@ -36,6 +36,7 @@
 #include "eta_fetcher.h"
 #include "route_config.h"
 #include "battery.h"
+#include "weather_hko.h"
 /* cJSON parsing is internal to eta_fetcher.c */
 
 static const char *TAG = "hkbus";
@@ -263,6 +264,10 @@ static void eta_fetch_task(void *arg)
 {
     eta_entry_t eta_buf[3];
 
+    /* Weather fetch counter: starts at 20 so the first cycle fetches
+     * immediately on boot — no 10-min wait for initial temperature. */
+    static int s_weather_cycle = 20;
+
     (void)arg;
 
     /* Ensure Wi-Fi PS is in a known state before the loop */
@@ -323,6 +328,13 @@ static void eta_fetch_task(void *arg)
          * The 50 ms settle delay is inside battery_sample_if_due().
          * Internal cadence: samples every 2nd call (~every 60 s). */
         battery_sample_if_due();
+
+        /* Weather fetch every 20th cycle (~10 min at 30 s/cycle).
+         * Counter advances every cycle regardless of ETA fetch success. */
+        if (++s_weather_cycle >= 20) {
+            s_weather_cycle = 0;
+            weather_fetch_once();
+        }
 
         /* Atomic flip: publish the newly-filled buffer.
          * This is a single aligned word-sized write — naturally
@@ -419,12 +431,19 @@ static void display_task(void *arg)
             if (pct != 255) battery_pct = pct;
         }
 
+        /* ---- 5b. Get temperature string (stale TTL 30 min, hidden if unavailable) ---- */
+        char temp_str[8] = {0};
+        const char *temp_ptr = NULL;
+        if (weather_get_temp_str(temp_str, sizeof(temp_str))) {
+            temp_ptr = temp_str;
+        }
+
         /* ---- 6. Compute seconds until next wall-clock boundary ---- */
         int sec = ti->tm_sec;
         int next_seconds = s_refresh_interval - (sec % s_refresh_interval);
 
         /* ---- 7. Render the dashboard ---- */
-        render_dashboard(time_str, last_updated, battery_pct,
+        render_dashboard(time_str, temp_ptr, last_updated, battery_pct,
                          s_route_buf[buf_idx]);
 
         /* ---- 8. Sleep until the next boundary ---- */
@@ -457,9 +476,16 @@ void app_main(void)
     /* ---- Init SNTP (blocking, up to 10 s) ---- */
     time_sync_init();
 
-    /* ---- Load route config from SPIFFS ---- */
+/* ---- Load route config from SPIFFS ---- */
     s_route_count = route_config_load(s_routes, MAX_ROUTES);
     ESP_LOGI(TAG, "Loaded %d routes", s_route_count);
+
+    /* ---- Init weather module (station name from routes.json) ---- */
+    weather_init(route_config_get_weather_station());
+
+    /* ---- Read refresh interval from config ---- */
+    s_refresh_interval = route_config_get_refresh_interval();
+    ESP_LOGI(TAG, "refresh_interval = %d s", s_refresh_interval);
 
     /* ---- Initialise double-buffer with static route info ---- */
     /* Both buffers start with the same static fields (route_num,

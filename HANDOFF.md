@@ -6,6 +6,17 @@
 
 ## 1. Last Completed Step
 
+- **[2026-07-23] HKO temperature display in header band** — Full implementation of design.md §8 (External Data: Temperature). **Hardware-verified**: temperature appears in header after ~30 s (first weather fetch), degree symbol renders correctly, no overlap with time.
+  - **http_util.c/h**: Extracted `http_get_body()` from `eta_fetcher.c` into a shared module with `log_tag` parameter (replaces `operator`/`route` params). `eta_fetcher.c` updated to include `http_util.h` and use new signature.
+  - **weather_hko.c/h**: New module with `weather_init()`, `weather_fetch_once()`, `weather_snapshot()`, `weather_get_temp_str()`. Spinlock-protected storage (mirrors battery.c pattern). HKO rhrread API fetch, JSON parse, station matching, 30-min TTL.
+  - **display.c/h**: `render_header()` and `render_dashboard()` now accept `const char *temp_str` parameter. Temperature drawn at 22 px bold (`u8g2_font_profont22_mf`), 16 px right of title, same baseline (y=24). Overlap guard prevents collision with time.
+  - **route_config.c/h**: Added `s_weather_station` static buffer, `route_config_get_weather_station()` accessor, and `"weather"."station"` JSON parsing.
+  - **main.c**: `weather_init()` in `app_main()`, weather fetch counter (`s_weather_cycle`, starts at 20) in `eta_fetch_task()` (every 20th cycle), `weather_get_temp_str()` in `display_task()`.
+  - **CMakeLists.txt**: Added `http_util.c` and `weather_hko.c` to SRCS.
+  - **routes.json**: Added `"weather": { "station": "Hong Kong Observatory" }`.
+  - **Docs**: PRD.md (FR #13, TBC #3 → Implemented, §6 arch note), CLAUDE.md (new "Weather Temperature" section), HANDOFF.md (this entry).
+  - Build: PASS, binary 0x321f70 bytes (~3.21 MB, 22% free). No new warnings.
+
 - **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
 
 - **[2026-07-20] Diagnostic ESP_LOGD added to parse_kmb_response()** — Added per-entry debug logging in the KMB parse loop to diagnose why all entries are being skipped (showing "--" for KMB routes). Each entry now logs: `eta` raw value, `api_dest`, `cfg_dest`, filter result (MATCH/MISMATCH), parse result, and final disposition (accepted/skipped with reason). Three skip reasons: missing eta, direction filter, parse_eta_epoch failure. Build: PASS, binary 0x3215f0 bytes (~3.21 MB, 22% free). No new warnings. User to flash and run with DEBUG log level to diagnose.
@@ -46,15 +57,28 @@
 
 | File | Change |
 |------|--------|
-| `main/route_config.c` | **Modified** — Added `60 % val == 0` validation with clamp-to-10 fallback. |
-| `main/main.c` | **Modified** — Added `s_refresh_interval` static, set once in `app_main()`, used in `display_task()` boundary calculation. |
-| `HANDOFF.md` | **Modified** — This file. Added session entry, build status. |
+| `main/http_util.c` | **Create** — Extracted `http_get_body()` + `http_event_handler` + `body_capture_t` from `eta_fetcher.c`. |
+| `main/http_util.h` | **Create** — Public API: `char *http_get_body(const char *url, const char *log_tag)`. |
+| `main/weather_hko.c` | **Create** — HKO fetch, JSON parse, spinlock-protected storage, `weather_snapshot`/`weather_get_temp_str`. |
+| `main/weather_hko.h` | **Create** — Public API: `weather_init`, `weather_fetch_once`, `weather_snapshot`, `weather_get_temp_str`, `weather_temp_t` struct. |
+| `main/eta_fetcher.c` | **Modify** — Removed `http_get_body`/`http_event_handler`/`body_capture_t`, include `http_util.h`, update call sites to new `log_tag` signature. |
+| `main/display.c` | **Modify** — `render_header` + `render_dashboard` signature changes; add temperature rendering block (22px profont22_mf, 16px gap, overlap guard). |
+| `main/display.h` | **Modify** — Updated function signatures for `render_header` and `render_dashboard`. |
+| `main/main.c` | **Modify** — `weather_init()` in `app_main`, weather fetch counter in `eta_fetch_task` (every 20th cycle), `weather_get_temp_str()` in `display_task`. |
+| `main/route_config.c` | **Modify** — Parse `"weather"."station"`, add `route_config_get_weather_station()`. |
+| `main/route_config.h` | **Modify** — Declare `route_config_get_weather_station()`. |
+| `main/CMakeLists.txt` | **Modify** — Add `http_util.c` and `weather_hko.c` to SRCS. |
+| `spiffs_data/routes.json` | **Modify** — Add `"weather": { "station": "Hong Kong Observatory" }`. |
+| `PRD.md` | **Modify** — FR #13, TBC #3 → Implemented, §6 architecture note. |
+| `CLAUDE.md` | **Modify** — New "Weather Temperature" section. |
+| `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3, §5. |
+| `mockup.html` | **Modify** — Updated to match design.md §3 (header temp, 32px time, 10px label, footer cleanup). |
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x321650 bytes (~3.21 MB, factory app 4 MB partition, 22% free). Display refresh interval centralised in `routes.json` with validation. No new warnings. Binary size change within noise (0x3215c0 → 0x321650, +144 bytes).
+- **Last build**: PASS — `idf.py build` completed. Binary 0x321f70 bytes (~3.21 MB, factory app 4 MB partition, 22% free). HKO temperature display implemented. **Hardware-verified**: temperature renders in header, degree symbol correct, no overlap with time. No new warnings.
 
 ---
 

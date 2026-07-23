@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mockup — hk-bus-eta-rlcd Option A (Stacked List)</title>
+<title>mockup — hk-bus-eta-rlcd (design.md §3)</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -95,14 +95,25 @@ h1 {
   align-items: center;
   justify-content: space-between;
 }
+.disp-header .header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
 .disp-header .header-label {
-  font-size: 15px;
+  font-size: 10px;
   font-weight: normal;
   letter-spacing: 0.5px;
   line-height: 1;
 }
-.disp-header .header-time {
+.disp-header .header-temp {
   font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+.disp-header .header-time {
+  font-size: 32px;
   font-weight: bold;
   letter-spacing: 1px;
   line-height: 1;
@@ -125,10 +136,10 @@ h1 {
   align-items: center;
 }
 
-/* Col 1 — route number (fixed ~60px, bold, 24px, left-aligned) */
+/* Col 1 — route number (fixed ~48px, bold, 24px, left-aligned) */
 .route-col-route {
-  width: 60px;
-  min-width: 60px;
+  width: 48px;
+  min-width: 48px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -149,7 +160,7 @@ h1 {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding-left: 16px;
+  padding-left: 28px;
   align-self: stretch;
 }
 .route-col-info .rt-dest {
@@ -207,7 +218,7 @@ h1 {
   margin-top: 1px;
 }
 
-/* ── Footer band ── */
+/* ── Footer band (design.md §3 rule 4) ── */
 .disp-footer {
   background: #000;
   color: #fff;
@@ -221,10 +232,6 @@ h1 {
   font-weight: normal;
   line-height: 1;
   letter-spacing: 0;
-  gap: 12px;
-}
-.disp-footer .sleep-status {
-  margin-right: auto;
 }
 
 /* ── Controls ── */
@@ -264,8 +271,8 @@ h1 {
 </head>
 <body>
 
-<h1>hk-bus-eta-rlcd &middot; Option A &mdash; Stacked List</h1>
-<p class="subtitle">Finalized design &middot; 400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; per design.md &sect;3 &middot; zh-HK CJK text (WenQuanYi Bitmap Song)</p>
+<h1>hk-bus-eta-rlcd &middot; design.md &sect;3 Layout</h1>
+<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; header with temp &amp; 32px time &middot; zh-HK CJK text</p>
 
 <div class="viewer">
   <div>
@@ -291,9 +298,9 @@ const dataSets = {
   1: {
     label: '3 routes, 1 with "--" (matches routes.json)',
     time: '14:32',
+    temp: '28°C',
     updated: '14:32:00',
     battery: 72,
-    sleepStatus: 'Sleep in 12 min',
     routes: [
       { num: '30X',  dest: '黃埔花園', stop: '楊屋道街市', e1: '3',  e2: '12', e3: '25' },
       { num: '238X', dest: '中港碼頭', stop: '龍德街',     e1: '8',  e2: '19', e3: '34' },
@@ -303,9 +310,9 @@ const dataSets = {
   2: {
     label: 'font-shrink stress test (long zh-HK strings)',
     time: '15:07',
+    temp: '31°C',
     updated: '15:07:22',
     battery: 100,
-    sleepStatus: 'Morning Window',
     routes: [
       { num: '2',   dest: '中環碼頭',           stop: '中環五號碼頭',   e1: '5',  e2: '15', e3: '28' },
       { num: '5B',  dest: '堅尼地城海旁',       stop: '堅尼地城',       e1: '10', e2: '22', e3: '40' },
@@ -315,9 +322,9 @@ const dataSets = {
   3: {
     label: 'all live ETAs, 1-digit battery (pad test)',
     time: '18:45',
+    temp: '26°C',
     updated: '18:45:10',
     battery: 9,
-    sleepStatus: 'Sleep in 3 min',
     routes: [
       { num: '1',   dest: '中環',         stop: '中環碼頭',           e1: '2',  e2: '9',  e3: '15' },
       { num: '101', dest: '堅尼地城',     stop: '堅尼地城',           e1: '7',  e2: '18', e3: '30' },
@@ -327,46 +334,25 @@ const dataSets = {
 };
 
 function buildMockup(d) {
-  // Col 2 available ≈ 400 - 60(route) - 120(eta) - 8(padding left) - 10(padding right) - 16(Col 2 left pad) = ~186px
-  const availWidth = 186;
-  const destShrink = function(text, baseSize) {
-    const est = function(s) {
-      return [...text].reduce(function(w, c) {
-        // CJK chars ~1em, ASCII chars ~0.5em
-        return w + (c.charCodeAt(0) > 0x7F ? s * 1.0 : s * 0.5);
-      }, 0);
-    };
-    if (est(baseSize) <= availWidth) return baseSize;
-    for (var s = baseSize - 1; s >= 14; s--) { if (est(s) <= availWidth) return s; }
-    return 14;
-  };
-  const stopShrink = function(text, baseSize) {
-    const est = function(s) {
-      return [...text].reduce(function(w, c) {
-        return w + (c.charCodeAt(0) > 0x7F ? s * 1.0 : s * 0.5);
-      }, 0);
-    };
-    if (est(baseSize) <= availWidth) return baseSize;
-    for (var s = baseSize - 1; s >= 11; s--) { if (est(s) <= availWidth) return s; }
-    return 11;
-  };
-
   var html = '';
   html += '<div class="disp-header">';
+  html += '<div class="header-left">';
   html += '<span class="header-label">HK Bus ETA</span>';
+  if (d.temp) {
+    html += '<span class="header-temp">' + d.temp + '</span>';
+  }
+  html += '</div>';
   html += '<span class="header-time">' + d.time + '</span>';
   html += '</div>';
 
   d.routes.forEach(function(r, i) {
     if (i > 0) html += '<div class="disp-divider"></div>';
-    var destSize = destShrink(r.dest, 18);
-    var stopSize = stopShrink(r.stop, 13);
 
     html += '<div class="route-row">';
     html += '<div class="route-col-route"><span class="rt-num">' + r.num + '</span></div>';
     html += '<div class="route-col-info">';
-    html += '<div class="rt-dest" style="font-size:' + destSize + 'px;"><span style="font-size:' + stopSize + 'px;">往</span> ' + r.dest + '</div>';
-    html += '<div class="rt-stop" style="font-size:' + stopSize + 'px;">' + r.stop + '</div>';
+    html += '<div class="rt-dest"><span style="font-size:13px;">往</span> ' + r.dest + '</div>';
+    html += '<div class="rt-stop">' + r.stop + '</div>';
     html += '</div>';
     html += '<div class="route-col-eta">';
     html += '<div class="eta-row">';
@@ -382,9 +368,6 @@ function buildMockup(d) {
   html += '<div class="disp-divider"></div>';
   html += '<div class="disp-footer">';
   html += '<span>Updated ' + d.updated + '</span>';
-  if (d.sleepStatus) {
-    html += '<span class="sleep-status">' + d.sleepStatus + '</span>';
-  }
   html += '<span>Battery: ' + String(d.battery).padStart(3, ' ') + '%</span>';
   html += '</div>';
 

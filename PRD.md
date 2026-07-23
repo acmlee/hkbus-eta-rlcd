@@ -41,6 +41,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
 10. **Boot-to-display target** — From power-on to the first fully rendered ETA dashboard, the device should take no more than **10 seconds**. If Wi-Fi or SNTP is slow, show the partial state (time only or "Connecting..." message) within 10 s rather than a blank screen.
 11. **Null ETA display** — If a route has no available ETA (API returns no data, or the next bus is beyond the API's reporting horizon), display "--" for that route. Never display "0" as a substitute for "no data".
 12. **Daily NTP resync** — Once per day at 06:00 local time, trigger a one-shot SNTP resync to correct clock drift accumulated over 24+ hours of uptime. The resync is blocking but bounded (10 s max retry); if it times out, log a warning and continue normally — do not crash or hang. The "once per day" guard uses day-of-year tracking so the resync fires exactly once per day, with one retry attempt per day regardless of prior success/failure.
+13. **Temperature display** — Display the current air temperature in the header band using the Hong Kong Observatory (HKO) "Current Weather Report" open data API (`rhrread`). Fetch every ~10 min via the `eta_fetch_task` piggyback (every 20th cycle). Hide on failure or stale data (30-min TTL). Station configurable via `routes.json` `weather.station` (default: "Hong Kong Observatory").
 
 ## 4. Data Source
 
@@ -100,7 +101,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
 
 The firmware runs two independent FreeRTOS tasks after boot initialisation:
 
-- **`eta_fetch_task`** (priority: `tskIDLE_PRIORITY+2`): Owns the ETA fetch loop and Wi-Fi modem-sleep toggling. Cadence specified in CLAUDE.md §Display Refresh (current: ~30 s ±10% jitter). Writes fetched ETA values into the **inactive** double-buffer, then atomically flips a shared active-buffer index.
+- **`eta_fetch_task`** (priority: `tskIDLE_PRIORITY+2`): Owns the ETA fetch loop, Wi-Fi modem-sleep toggling, battery sampling, and **weather fetch** (every 20th cycle, ~10 min). Cadence specified in CLAUDE.md §Display Refresh (current: ~30 s ±10% jitter). Writes fetched ETA values into the **inactive** double-buffer, then atomically flips a shared active-buffer index.
 - **`display_task`** (priority: `tskIDLE_PRIORITY+3`): Owns wall-clock render boundary alignment, the daily NTP resync, and `render_dashboard()`. It always reads from the **active** double-buffer and never waits for fresh data. Render boundaries specified in CLAUDE.md §Display Refresh.
 
 ### Shared data: double-buffering (no mutex)
@@ -200,6 +201,6 @@ The following have been identified as future scope items and deliberately deferr
 |---|---|---|---|
 | 1 | Battery percentage indicator | **Implemented** | Footer now shows `Battery: XX%` (replacing `Next: Xs`). ADC1 on GPIO4, curve-fitting calibration, 3× divider, piecewise linear LUT (11-point Li-ion discharge curve) with hysteresis (1% deadband) to prevent display flicker. **Voltage sampled during confirmed Wi-Fi-idle windows** (after `WIFI_PS_MIN_MODEM` re-enable, 50 ms settle delay) to avoid Wi-Fi TX load sag causing false discharge readings. Filter pipeline: rolling 5-sample median → EMA (α=0.2) → LUT → two-reading confirmation for jumps >6 points. `battery_sample_if_due()` called from `eta_fetch_task` every 2nd cycle (~60 s); `battery_get_percentage()` returns cached value. Plan file removed after implementation. **Known simplification**: Uses a generic 18650 Li-ion discharge curve — not calibrated to the specific cell/load in this device. A per-unit calibration step (e.g. measuring the actual cell's open-circuit voltage at known charge levels) could improve accuracy further. |
 | 2 | Larger zh-HK fonts (dest + stop) | TBC (deferred) | See `docs/plan-larger-fonts-noto-otf2bdf.md`. |
-| 3 | Temperature/humidity display | Future | — |
+| 3 | Temperature/humidity display | **Implemented** | Header now shows `NN°C` from HKO rhrread API (station: configurable via `routes.json` `weather.station`, default "Hong Kong Observatory"). Font: `u8g2_font_profont22_mf` (22 px bold). Fetched every 20th `eta_fetch_task` cycle (~10 min). Stale TTL: 30 min (hidden if stale). Format: `28°C`. Failure: hide entirely (no placeholder, no `--°C`). Piggyback on existing Wi-Fi-awake window — no separate task. Files: `weather_hko.c/h`, `http_util.c/h`. |
 | 4 | Deep-sleep with periodic wake | Future | — |
 | 5 | Display sleep + button wake | **Pending** | Proposed feature: display off (0x28 sleep) outside a configurable morning window; button-triggered wake (on-board KEY button, GPIO18) for a configurable timeout. Full plan: `docs/plan-display-sleep-button-wake.md`. This is a new feature independent of the now-removed voltage-profile code (Decision #7). |

@@ -7,6 +7,7 @@
 static const char *TAG = "route_config";
 
 static int refresh_interval = 30;
+static char s_weather_station[64] = "Hong Kong Observatory";
 
 /*
  * Normalise operator string from routes.json to internal constant.
@@ -95,6 +96,17 @@ int route_config_load(route_config_t config[], int max_count)
         }
         ESP_LOGI(TAG, "refresh_interval = %d s", refresh_interval);
     }
+
+    /* Read weather station (optional, default "Hong Kong Observatory") */
+    cJSON *weather = cJSON_GetObjectItem(root, "weather");
+    if (cJSON_IsObject(weather)) {
+        cJSON *station = cJSON_GetObjectItem(weather, "station");
+        if (cJSON_IsString(station) && station->valuestring[0] != '\0') {
+            strncpy(s_weather_station, station->valuestring, sizeof(s_weather_station) - 1);
+            s_weather_station[sizeof(s_weather_station) - 1] = '\0';
+        }
+    }
+    ESP_LOGI(TAG, "weather station = '%s'", s_weather_station);
 
     /* Read routes array */
     cJSON *routes = cJSON_GetObjectItem(root, "routes");
@@ -190,4 +202,9 @@ int route_config_load(route_config_t config[], int max_count)
 int route_config_get_refresh_interval(void)
 {
     return refresh_interval;
+}
+
+const char *route_config_get_weather_station(void)
+{
+    return s_weather_station;
 }

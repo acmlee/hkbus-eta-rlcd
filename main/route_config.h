@@ -36,3 +36,9 @@ int route_config_load(route_config_t config[], int max_count);
  * @return Interval in seconds (default 30 on error).
  */
 int route_config_get_refresh_interval(void);
+
+/**
+ * @brief Get the configured weather station name from routes.json.
+ * @return Pointer to static string, default "Hong Kong Observatory" if absent.
+ */
+const char *route_config_get_weather_station(void);

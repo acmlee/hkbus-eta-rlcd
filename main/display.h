@@ -54,14 +54,15 @@ typedef struct {
 
 #include "u8g2_st7305.h"
 
-void render_header(const char *time_str);
+void render_header(const char *time_str, const char *temp_str);
 void render_divider(int y);
 void render_route_row(int row_index, const char *route_num,
                       const char *dest_zh, const char *stop_zh,
                       time_t eta1, time_t eta2, time_t eta3);
 void render_footer(const char *updated_str, int battery_pct);
-void render_dashboard(const char *time_str, const char *updated_str,
-                      int battery_pct, const route_data_t routes[3]);
+void render_dashboard(const char *time_str, const char *temp_str,
+                      const char *updated_str, int battery_pct,
+                      const route_data_t routes[3]);
 
 /**
  * @brief Flush the U8g2 buffer to the display.

@@ -220,3 +220,16 @@ history of this feature's lifecycle.
 - ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
 - Refresh interval configured via `routes.json` `refresh_seconds`
 
+## Weather Temperature
+- **Source**: HKO rhrread API (`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`)
+- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`)
+- **Fetch model**: Piggyback on `eta_fetch_task` (every 20th cycle, ~10 min). Counter starts at 20 so first fetch runs immediately on boot — no 10-min wait for initial temperature.
+- **Font**: `u8g2_font_profont22_mf` (22 px bold), same baseline as title (y=24), 16 px gap from title
+- **Format**: `NN°C` (e.g. `28°C`), using `\xC2\xB0` for `°`
+- **Stale TTL**: 30 minutes (1800 s). Hidden entirely when stale or unavailable — no placeholder, no `--°C`.
+- **Overlap guard**: If `x_temp + w_temp + 8 > x_time_left`, temperature is omitted for that frame.
+- **Data model**: `weather_temp_t` struct with spinlock (mirrors battery.c pattern). Writer: `eta_fetch_task` → `weather_fetch_once()`. Reader: `display_task` → `weather_snapshot()`/`weather_get_temp_str()`.
+- **Files**: `main/weather_hko.c`, `main/weather_hko.h`, `main/http_util.c`, `main/http_util.h`
+- **Failure behaviour**: HTTP error → log warning, preserve last-known-good. JSON parse failure → log warning, preserve last-known-good. Station not found in response → log warning, no update. After 30 min of no successful fetch, temperature disappears from header.
+- **HKO API response shape differs from KMB/Citybus** — never assume interchangeability.
+
