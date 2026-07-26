@@ -84,6 +84,22 @@ this repository.
 
 ---
 
+## Hong Kong Observatory (HKO) Open Data API
+
+**Component**: Current air temperature data fetched at runtime (not bundled
+code, but a runtime data dependency) for the header-band temperature display
+(`main/weather_hko.c`).
+
+**Source**: HKO "Current Weather Report" rhrread open data API:
+https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en
+
+**Terms**: Provided under the Hong Kong Observatory's Open Data Licence.
+See https://www.hko.gov.hk/en/abouthko/opendata.htm for full terms. This
+project consumes this API as a data source only; no API code or data is
+redistributed as part of this repository.
+
+---
+
 ## Noto Sans CJK / Source Han Sans (if applicable)
 
 [Only include this section if the Noto/otf2bdf larger-font work has actually
