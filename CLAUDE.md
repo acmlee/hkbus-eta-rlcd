@@ -167,30 +167,31 @@ history of this feature's lifecycle.
 - Destination and bus-stop name fields render in **zh-HK Chinese** on
   the physical display, verified end-to-end from `routes.json` →
   `route_config.c` → `display.c` → ST7305.
-- **Custom fonts** (generated via `bdfconv` from U8g2 source):
-  - `u8g2_font_zhhk_dest_18` — 12pt WQY Bitmap Song, 27,618 glyphs, ~1.2MB
-  - `u8g2_font_zhhk_stop_13` — 9pt WQY Bitmap Song, 27,618 glyphs, ~766KB
-- **Coverage**: ASCII + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK
-  Extension A (U+3400–U+4DBF)
+- **Custom fonts** (generated via `otf2bdf` + `bdfconv` from Noto Sans CJK HK):
+  - `u8g2_font_zhhk_dest_24` — 24px Noto Sans CJK HK Bold, 27,942 glyphs, ~2.0 MB
+  - `u8g2_font_zhhk_stop_20` — 20px Noto Sans CJK HK Regular, 27,942 glyphs, ~1.6 MB
+- **Coverage**: ASCII (32-128) + CJK Symbols and Punctuation (U+3000–U+303F)
+  + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK Extension A (U+3400–U+4DBF)
+  + Halfwidth and Fullwidth Forms (U+FF00–U+FFEF)
 - **Data flow**: `routes.json` provides `dest_zh`/`stop_zh` fields (zh-HK
   text). `route_config.c` reads `dest_zh`/`stop_zh` first, falling back
   to `dest_en`/`stop_en` only if the zh-HK field is absent or empty.
   `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` for `dest_zh`
   and `stop_zh` fields (CJK font first, ASCII fallback fonts for
   pure-ASCII strings).
-- **Partition table**: factory app enlarged from 3 MB to 4 MB to
-  accommodate font data; storage partition moved to 0x410000.
-- **Total binary**: ~3.18 MB (0x31e2f0 bytes).
-- Font files: `main/fonts/u8g2_font_zhhk_dest_18.c`,
-  `main/fonts/u8g2_font_zhhk_stop_13.c`; header: `main/fonts/fonts.h`.
+- **Partition table**: factory app enlarged from 4 MB to 8 MB to
+  accommodate larger font data; storage partition moved to 0x810000.
+- **Total binary**: ~4.8 MB (0x4c8c90 bytes).
+- Font files: `main/fonts/u8g2_font_zhhk_dest_24.c`,
+  `main/fonts/u8g2_font_zhhk_stop_20.c`; header: `main/fonts/fonts.h`.
 - `U8G2_USE_LARGE_FONTS` compile definition added to
   `main/CMakeLists.txt` to support the large font data arrays.
 - The English-interim Helvetica fonts (`u8g2_font_helvB14_tr`/
   `u8g2_font_helvR10_tr`) remain as a fallback path for pure-ASCII
   strings (e.g. if `dest_zh` is absent in `routes.json`).
 - **"往" prefix**: The destination line is prefixed with "往" (drawn
-  in the stop-font size, `u8g2_font_zhhk_stop_13`) to indicate
-  direction, followed by the destination name in `u8g2_font_zhhk_dest_18`.
+  in the stop-font size, `u8g2_font_zhhk_stop_20`) to indicate
+  direction, followed by the destination name in `u8g2_font_zhhk_dest_24`.
 - **ETA fonts**: eta1 (soonest) uses `u8g2_font_profont29_mf` (29px bold),
   eta2/eta3 use `u8g2_font_profont17_mf` (17px regular). The "min" suffix
   remains `u8g2_font_profont12_mf`.
@@ -212,8 +213,11 @@ history of this feature's lifecycle.
 
 ## ETA Fonts (current)
 - eta1 (soonest): `u8g2_font_profont29_mf` (29px, bold)
-- eta2, eta3: `u8g2_font_profont17_mf` (17px, regular)
+- eta2, eta3: `u8g2_font_profont22_mf` (22px, regular)
 - "min" suffix: `u8g2_font_profont12_mf` (unchanged)
+
+## Route Number Font (current)
+- `u8g2_font_profont29_mf` (29px, bold) — same as eta1
 
 ## Display Refresh
 - Display renders at configurable wall-clock boundaries (read from `routes.json` `refresh_seconds`). Valid values are divisors of 60 (e.g. 10, 12, 15, 20, 30) — any value that does not divide 60 evenly is rejected at boot with a warning and clamped to 10 s.

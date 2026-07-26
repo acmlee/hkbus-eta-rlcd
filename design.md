@@ -51,6 +51,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 ### Line-height
 - For 24 px glyphs, allow 32 px row height (1.33×).
+- For 20 px glyphs, allow 28 px row height (1.4×).
 - For 18 px glyphs, allow 24 px row height (1.33×).
 - For 16 px glyphs, allow 22 px row height (1.375×).
 - For 13 px glyphs, allow 18 px row height (1.38×).
@@ -88,14 +89,14 @@ Each route row must show **both** the destination (往 — where the bus is goin
    - **Current time HH:MM** right-aligned, bold, 32 px (`u8g2_font_logisoso32_tf`).
    - No icon, no other label. Temperature must never overlap the time element.
 2. **Route rows** — Column layout with explicit column boundaries:
-    - **Col 1** (route number): fixed width ~48 px, left-aligned, bold, vertically centred across the full row height. At least 16 px gap between Col 1 and Col 2.
+    - **Col 1** (route number): fixed width ~60 px, left-aligned, bold, vertically centred across the full row height. At least 16 px gap between Col 1 and Col 2.
     - **Col 2** (destination + bus-stop, stacked): elastic, fills remaining space up to the ETA column. 16 px left padding from Col 1 boundary.
-        - **Top line — destination (zh-HK)**: bold, ~18px (`u8g2_font_zhhk_dest_18`), rendered via `u8g2_DrawUTF8`. Falls back to `u8g2_font_helvB14_tr` with "To " prefix if `dest_zh` is absent in `routes.json`.
-        - **Bottom line — bus-stop name (zh-HK)**: regular weight, ~13px (`u8g2_font_zhhk_stop_13`), rendered via `u8g2_DrawUTF8`. Falls back to `u8g2_font_helvR10_tr` if `stop_zh` is absent in `routes.json`.
-        - If either line overflows the available width, progressively shrink that line's font size independently (do not truncate, do not wrap to a second line). Destination shrink chain: zhhk_dest_18→helvB14→B12→B10→B08. Stop shrink chain: zhhk_stop_13→helvR10→R08.
+        - **Top line — destination (zh-HK)**: bold, ~24px (`u8g2_font_zhhk_dest_24`), rendered via `u8g2_DrawUTF8`. Falls back to `u8g2_font_helvB14_tr` with "To " prefix if `dest_zh` is absent in `routes.json`.
+        - **Bottom line — bus-stop name (zh-HK)**: regular weight, ~20px (`u8g2_font_zhhk_stop_20`), rendered via `u8g2_DrawUTF8`. Falls back to `u8g2_font_helvR10_tr` if `stop_zh` is absent in `routes.json`.
+        - If either line overflows the available width, progressively shrink that line's font size independently (do not truncate, do not wrap to a second line). Destination shrink chain: zhhk_dest_24→helvB14→B12→B10→B08. Stop shrink chain: zhhk_stop_20→helvR10→R08.
     - **Col 3** (ETA values ×3): fixed width ~120 px, right-aligned, split into 3 sub-columns of ~40 px each.
         - **1st (soonest) ETA**: 29px, bold (`u8g2_font_profont29_mf`) — this is the value the user scans first.
-        - **2nd and 3rd ETA**: 17px, regular weight (`u8g2_font_profont17_mf`), spaced evenly to the right of the 1st value with visible gaps (8–12 px) between each value so they are clearly separated at a glance.
+        - **2nd and 3rd ETA**: 22px, regular weight (`u8g2_font_profont22_mf`), spaced evenly to the right of the 1st value with visible gaps (8–12 px) between each value so they are clearly separated at a glance.
         - A single shared "min" suffix label may appear once beneath or beside the group rather than repeated 3×, to avoid visual clutter.
         - If a route has fewer than 3 upcoming buses, remaining slots show "--" in the same alignment and weight as their column position (2nd/3rd style), not the bold 1st-position style.
 3. **Row dividers** — 1 px horizontal line (single row of black pixels) between each route row. Not between header and row 1 (the header band itself is the separator).
@@ -150,7 +151,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Every visible element uses exactly 2 colours: `#000` (black) and the background colour. No greys, no tints.
 - [ ] No anti-aliased edges on any text or shape.
 - [ ] Text sizes meet the minimums in §2 for their role.
-- [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_18` and `u8g2_font_zhhk_stop_13` are compiled into the firmware.
+- [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_24` and `u8g2_font_zhhk_stop_20` are compiled into the firmware.
 - [ ] Header and footer are solid black bands with white inverted text.
 - [ ] Header shows "HK Bus ETA" left-aligned, temperature (NN°C) to the right of the title at 22 px bold, and current time HH:MM right-aligned at 32 px bold. Temperature is omitted entirely when data is unavailable or stale.
 - [ ] Route rows have exactly 1 px horizontal dividers between them — no vertical dividers, no box borders.

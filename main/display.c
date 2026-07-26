@@ -136,7 +136,7 @@ void render_divider(int y)
 
 /* Font shrink chain for destination line: step down if string overflows */
 static const uint8_t *dest_font_chain[] = {
-    u8g2_font_zhhk_dest_18,   /* primary ~18px CJK + ASCII */
+    u8g2_font_zhhk_dest_24,   /* primary ~24px CJK + ASCII */
     u8g2_font_helvB14_tr,     /* fallback 1 ~14px ASCII only */
     u8g2_font_helvB12_tr,     /* fallback 2 ~12px ASCII only */
     u8g2_font_helvB10_tr,     /* fallback 3 ~10px ASCII only */
@@ -146,7 +146,7 @@ static const uint8_t *dest_font_chain[] = {
 
 /* Font shrink chain for stop-name line: step down if string overflows */
 static const uint8_t *stop_font_chain[] = {
-    u8g2_font_zhhk_stop_13,   /* primary ~13px CJK + ASCII */
+    u8g2_font_zhhk_stop_20,   /* primary ~20px CJK + ASCII */
     u8g2_font_helvR10_tr,    /* fallback 1 ~10px ASCII only */
     u8g2_font_helvR08_tr,    /* fallback 2 ~8px ASCII only */
 };
@@ -159,9 +159,9 @@ void render_route_row(int row_index, const char *route_num,
     u8g2_t *u = u8g2();
     int y_off = row_y(row_index);
 
-    /* ---- Col 1: route number (48px fixed, left-aligned, centred) ---- */
+    /* ---- Col 1: route number (60px fixed, left-aligned, centred) ---- */
     u8g2_SetDrawColor(u, 1);
-    u8g2_SetFont(u, u8g2_font_profont22_mf);
+    u8g2_SetFont(u, u8g2_font_profont29_mf);
     {
         int ascent = u8g2_GetFontAscent(u);
         int descent = u8g2_GetFontDescent(u);
@@ -214,13 +214,13 @@ void render_route_row(int row_index, const char *route_num,
     size_t stop_len = strlen(stop_zh);
     ESP_LOGI(TAG, "dest_zh='%s' (%zu bytes) at (%d,%d) font=%s",
              dest_zh, dest_len, col2_x, block_top + dest_ascent,
-             dest_font == u8g2_font_zhhk_dest_18 ? "zhhk_dest_18" :
+             dest_font == u8g2_font_zhhk_dest_24 ? "zhhk_dest_24" :
              dest_font == u8g2_font_helvB14_tr ? "helvB14" :
              dest_font == u8g2_font_helvB12_tr ? "helvB12" :
              dest_font == u8g2_font_helvB10_tr ? "helvB10" : "helvB08");
     ESP_LOGI(TAG, "stop_zh='%s' (%zu bytes) at (%d,%d) font=%s",
              stop_zh, stop_len, col2_x, block_top + dest_h + gap + stop_ascent,
-             stop_font == u8g2_font_zhhk_stop_13 ? "zhhk_stop_13" :
+             stop_font == u8g2_font_zhhk_stop_20 ? "zhhk_stop_20" :
              stop_font == u8g2_font_helvR10_tr ? "helvR10" : "helvR08");
 
     /* Draw "往" prefix (stop font size) then destination */
@@ -243,7 +243,6 @@ void render_route_row(int row_index, const char *route_num,
     /* ---- Col 3: ETA values (120px fixed, right-aligned) ---- */
     int eta_right_edge = DISP_WIDTH - 10;
     int eta_col_left   = DISP_WIDTH - COL_ETA_W;
-    int gap_eta = 10;
 
     /* Compute minutes remaining from raw epoch timestamps at render time */
     int m1 = -1, m2 = -1, m3 = -1;
@@ -274,12 +273,13 @@ void render_route_row(int row_index, const char *route_num,
     else        snprintf(e3, sizeof(e3), "%d", m3);
 
     /* Measure widths */
-    u8g2_SetFont(u, u8g2_font_profont17_mf);
+    u8g2_SetFont(u, u8g2_font_profont22_mf);
     int w3 = u8g2_GetStrWidth(u, e3);
     int w2 = u8g2_GetStrWidth(u, e2);
     u8g2_SetFont(u, u8g2_font_profont29_mf);
     int w1 = u8g2_GetStrWidth(u, e1);
 
+    int gap_eta = 12;
     int x3 = eta_right_edge - w3;
     int x2 = x3 - gap_eta - w2;
     int x1 = x2 - gap_eta - w1;
@@ -300,8 +300,8 @@ void render_route_row(int row_index, const char *route_num,
     int e1_baseline = y_off + (ZONE_ROW_H - e1_h) / 2 + e1_ascent;
     u8g2_DrawStr(u, x1, e1_baseline, e1);
 
-    /* Draw eta2, eta3 (secondary) — profont17_mf */
-    u8g2_SetFont(u, u8g2_font_profont17_mf);
+    /* Draw eta2, eta3 (secondary) — profont22_mf */
+    u8g2_SetFont(u, u8g2_font_profont22_mf);
     int e2_ascent = u8g2_GetFontAscent(u);
     int e2_descent = u8g2_GetFontDescent(u);
     int e2_h = e2_ascent - e2_descent;

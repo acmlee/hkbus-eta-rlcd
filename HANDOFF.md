@@ -6,7 +6,7 @@
 
 ## 1. Last Completed Step
 
-- **[2026-07-23] HKO temperature display in header band** — Full implementation of design.md §8 (External Data: Temperature). **Hardware-verified**: temperature appears in header after ~30 s (first weather fetch), degree symbol renders correctly, no overlap with time.
+- **[2026-07-26] Route number + 2nd/3rd ETA font tuning** — Route number changed from `u8g2_font_profont22_mf` (24px) to `u8g2_font_profont29_mf` (29px, matching eta1). 2nd/3rd ETA changed from `u8g2_font_profont17_mf` (17px) to `u8g2_font_profont22_mf` (22px). Col 1 width widened from 48px to 60px; Col 2 offset from 64px to 92px. ETA gap increased from 10px to 12px. Updated: display.h, display.c, design.md, CLAUDE.md. Build: PASS, binary 0x4c7c10 bytes (~4.78 MB, 8 MB partition, 40% free). No new warnings.
   - **http_util.c/h**: Extracted `http_get_body()` from `eta_fetcher.c` into a shared module with `log_tag` parameter (replaces `operator`/`route` params). `eta_fetcher.c` updated to include `http_util.h` and use new signature.
   - **weather_hko.c/h**: New module with `weather_init()`, `weather_fetch_once()`, `weather_snapshot()`, `weather_get_temp_str()`. Spinlock-protected storage (mirrors battery.c pattern). HKO rhrread API fetch, JSON parse, station matching, 30-min TTL.
   - **display.c/h**: `render_header()` and `render_dashboard()` now accept `const char *temp_str` parameter. Temperature drawn at 22 px bold (`u8g2_font_profont22_mf`), 16 px right of title, same baseline (y=24). Overlap guard prevents collision with time.
@@ -57,34 +57,23 @@
 
 | File | Change |
 |------|--------|
-| `main/http_util.c` | **Create** — Extracted `http_get_body()` + `http_event_handler` + `body_capture_t` from `eta_fetcher.c`. |
-| `main/http_util.h` | **Create** — Public API: `char *http_get_body(const char *url, const char *log_tag)`. |
-| `main/weather_hko.c` | **Create** — HKO fetch, JSON parse, spinlock-protected storage, `weather_snapshot`/`weather_get_temp_str`. |
-| `main/weather_hko.h` | **Create** — Public API: `weather_init`, `weather_fetch_once`, `weather_snapshot`, `weather_get_temp_str`, `weather_temp_t` struct. |
-| `main/eta_fetcher.c` | **Modify** — Removed `http_get_body`/`http_event_handler`/`body_capture_t`, include `http_util.h`, update call sites to new `log_tag` signature. |
-| `main/display.c` | **Modify** — `render_header` + `render_dashboard` signature changes; add temperature rendering block (22px profont22_mf, 16px gap, overlap guard). |
-| `main/display.h` | **Modify** — Updated function signatures for `render_header` and `render_dashboard`. |
-| `main/main.c` | **Modify** — `weather_init()` in `app_main`, weather fetch counter in `eta_fetch_task` (every 20th cycle), `weather_get_temp_str()` in `display_task`. |
-| `main/route_config.c` | **Modify** — Parse `"weather"."station"`, add `route_config_get_weather_station()`. |
-| `main/route_config.h` | **Modify** — Declare `route_config_get_weather_station()`. |
-| `main/CMakeLists.txt` | **Modify** — Add `http_util.c` and `weather_hko.c` to SRCS. |
-| `spiffs_data/routes.json` | **Modify** — Add `"weather": { "station": "Hong Kong Observatory" }`. |
-| `PRD.md` | **Modify** — FR #13, TBC #3 → Implemented, §6 architecture note. |
-| `CLAUDE.md` | **Modify** — New "Weather Temperature" section. |
+| `main/display.h` | **Modify** — COL_ROUTE_W 48→60, COL_INFO_X 64→92. |
+| `main/display.c` | **Modify** — Route number font (22→29), 2nd/3rd ETA font (17→22), gap_eta 10→12. |
+| `design.md` | **Modify** — Updated typography table, Col 1 width, ETA sizes. |
+| `CLAUDE.md` | **Modify** — Updated ETA Fonts section, added Route Number Font section. |
 | `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3, §5. |
-| `mockup.html` | **Modify** — Updated to match design.md §3 (header temp, 32px time, 10px label, footer cleanup). |
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x321f70 bytes (~3.21 MB, factory app 4 MB partition, 22% free). HKO temperature display implemented. **Hardware-verified**: temperature renders in header, degree symbol correct, no overlap with time. No new warnings.
+- **Last build**: PASS — `idf.py build` completed. Binary 0x4c7c10 bytes (~4.78 MB, 8 MB factory partition, 40% free). Route number and 2nd/3rd ETA font sizes tuned. No new warnings.
 
 ---
 
 ## 4. Known Issues / Open Questions
 
-- **CJK zh-HK rendering**: WORKING END-TO-END — Verified on physical display. `routes.json` provides `dest_zh`/`stop_zh` fields. `route_config.c` reads zh-HK fields first (falls back to `_en` if absent). `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` with custom fonts (`u8g2_font_zhhk_dest_18`, `u8g2_font_zhhk_stop_13`). CJK glyphs rendering correctly on ST7305.
+- **CJK zh-HK rendering**: WORKING END-TO-END — Verified on physical display. `routes.json` provides `dest_zh`/`stop_zh` fields. `route_config.c` reads zh-HK fields first (falls back to `_en` if absent). `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` with custom fonts (`u8g2_font_zhhk_dest_24`, `u8g2_font_zhhk_stop_20`).
 - **KMB body capture overflow**: FIXED — KMB now uses route-specific `/eta/` endpoint (~700 bytes). Dynamic buffer growth (realloc) added as safety net.
 - **Fetch failure ETA preservation**: FIXED — Failed fetches now preserve last-known-good ETAs for up to 3 minutes, then expire to "--".
 - **Wi-Fi disconnect stuck at "--"**: FIXED — Added `esp_wifi_connect()` to `WIFI_EVENT_STA_DISCONNECTED` handler. The boot-time retry loop was the only reconnect mechanism, but it exits when `app_main` returns. ESP-IDF has no built-in auto-reconnect.
@@ -94,4 +83,4 @@
 
 ## 5. Next Step
 
-1. **Continue feature work** — Next priority TBD. Consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`), or larger zh-HK fonts (plan at `docs/plan-larger-fonts-noto-otf2bdf.md`).
+1. **Continue feature work** — Next priority TBD. Consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`).

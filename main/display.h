@@ -24,8 +24,8 @@
 
 /* Column layout within each route row */
 #define COL_ROUTE_X         0
-#define COL_ROUTE_W         48          /* fixed width for route number */
-#define COL_INFO_X          64          /* starts after route + 16px gap */
+#define COL_ROUTE_W         60          /* fixed width for route number */
+#define COL_INFO_X          92          /* starts after route + 32px gap */
 #define COL_ETA_W           120         /* fixed width for ETA group */
 
 /* ------------------------------------------------------------------
