@@ -1,14 +1,67 @@
 {
-  "routes": [
-    { "operator": "KMB", "route": "30X",  "stop_id": "92A8281D80524F78",
-      "stop_en": "Tai Ho Road Tsuen Wan", "stop_zh": "荃灣大河道",
-      "dest_en": "Whampoa Garden",       "dest_zh": "黃埔花園" },
-    { "operator": "KMB", "route": "238X", "stop_id": "88E1C9BB0B80711F",
-      "stop_en": "Riviera Gardens Bus Terminus", "stop_zh": "海濱花園總站",
-      "dest_en": "China Ferry Terminal", "dest_zh": "中港碼頭" },
-    { "operator": "CTB", "route": "930X", "stop_id": "003449",
-      "stop_en": "Luen Yan Street",     "stop_zh": "聯仁街",
-      "dest_en": "Causeway Bay",        "dest_zh": "銅鑼灣" }
+  "pages": [
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "30X",
+          "stop_id": "92A8281D80524F78",
+          "stop_en": "TAI HO ROAD TSUEN WAN (TW290)",
+          "stop_zh": "荃灣大河道",
+          "dest_en": "WHAMPOA GARDEN",
+          "dest_zh": "黃埔花園"
+        },
+        {
+          "operator": "KMB",
+          "route": "238X",
+          "stop_id": "88E1C9BB0B80711F",
+          "stop_en": "RIVIERA GARDENS BUS TERMINUS (TW942)",
+          "stop_zh": "海濱花園總站",
+          "dest_en": "CHINA FERRY TERMINAL",
+          "dest_zh": "中港碼頭"
+        },
+        {
+          "operator": "CTB",
+          "route": "930X",
+          "stop_id": "003449",
+          "stop_en": "Luen Yan Street",
+          "stop_zh": "聯仁街",
+          "dest_en": "Causeway Bay (Moreton Terrace)",
+          "dest_zh": "銅鑼灣"
+        }
+      ]
+    },
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "49X",
+          "stop_id": "A7E87E8D797D1A52",
+          "stop_en": "WANG LUNG STREET TSUEN WAN (TW272)",
+          "stop_zh": "荃灣橫龍街",
+          "dest_en": "KWONG YUEN",
+          "dest_zh": "廣源"
+        },
+        {
+          "operator": "KMB",
+          "route": "A31",
+          "stop_id": "35DB8602F51CF60F",
+          "stop_en": "MA TAU PA ROAD, TSUEN WAN (TW115)",
+          "stop_zh": "荃灣馬頭壩道",
+          "dest_en": "AIRPORT (GROUND TRANSPORTATION CENTRE)",
+          "dest_zh": "機場"
+        },
+        {
+          "operator": "KMB",
+          "route": "33B",
+          "stop_id": "3357B55DE2539CA3",
+          "stop_en": "LUEN YAN STREET TSUEN WAN (TW285)",
+          "stop_zh": "荃灣聯仁街",
+          "dest_en": "YAU TONG",
+          "dest_zh": "油塘"
+        }
+      ]
+    }
   ],
   "refresh_seconds": 10,
   "weather": {

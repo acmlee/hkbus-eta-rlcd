@@ -15,7 +15,11 @@ display showing "when's the next bus" without needing to pull out a phone.
 
 - **Dual-operator ETA fetch** — Real-time arrival estimates from both KMB (九巴) and
   Citybus (城巴) open APIs, fetched every ~30 seconds with randomised jitter to avoid
-  thundering-herd alignment.
+  thundering-herd alignment. Only the currently visible page's routes are fetched to
+  minimise Wi-Fi usage.
+- **Multi-page display** — Up to 2 pages of 3 routes each, toggled by pressing the on-board
+  KEY button (GPIO18). The footer shows "Page X/Y" to indicate which page is active.
+  Page-switch triggers an immediate fetch and render — no waiting for the next cycle.
 - **Traditional Chinese rendering** — zh-HK destination and bus-stop names rendered on the
   display via custom U8g2 bitmap font subsets (Noto Sans CJK HK, 27,942 glyphs covering
   CJK Unified Ideographs + Extension A + CJK punctuation + Fullwidth Forms). ASCII fallback
@@ -55,10 +59,9 @@ back-end derived from the Waveshare official reference driver.
 
 ### Prerequisites
 
-- [ESP-IDF](https://github.com/espressif/esp-idf) v5.x (target chip: `esp32s3`).
+- [ESP-IDF](https://github.com/espressif/esp-idf) **v6.0.2** (target chip: `esp32s3`).
   This project uses the ESP-IDF component registry (`idf_component.yml`) for cJSON and
-  expects the ESP-IDF build system (`idf.py`). No minimum IDF version is hard-enforced,
-  but v5.1 or later is recommended.
+  expects the ESP-IDF build system (`idf.py`).
 - A USB-C cable for flashing and serial monitoring.
 
 ### Build and Flash
@@ -68,19 +71,31 @@ back-end derived from the Waveshare official reference driver.
 git clone https://github.com/acmlee/hk-bus-eta-rlcd.git
 cd hk-bus-eta-rlcd
 
-# 2. Set the target chip
+# 2. Set up the ESP-IDF environment
+#    (adjust the path to your ESP-IDF installation)
+. ~/esp/esp-idf/export.sh
+
+# 3. Identify the board's serial port
+#    On macOS:  ls /dev/tty.usbmodem*
+#    On Linux:  ls /dev/ttyACM*  or  ls /dev/ttyUSB*
+#    This will show something like /dev/tty.usbmodem1143201
+
+# 4. Set the target chip
 idf.py set-target esp32s3
 
-# 3. Configure Wi-Fi credentials
+# 5. Configure Wi-Fi credentials
 idf.py menuconfig
 # Navigate to "WiFi Configuration" and enter your SSID and password.
 # The defaults are placeholders — change them.
 
-# 4. Build
+# 6. Build
 idf.py build
 
-# 5. Flash and monitor
-idf.py flash monitor
+# 7. Flash (replace PORT with your board's serial port, e.g. /dev/tty.usbmodem1143201)
+idf.py -p PORT flash
+
+# 8. Monitor
+idf.py -p PORT monitor
 ```
 
 > **Note**: The default `idf.py monitor` baud rate is 115200. Press `Ctrl+]` to exit
@@ -105,22 +120,76 @@ clock) within 10 seconds rather than staying blank.
 ### Routes (`routes.json`)
 
 Route configuration is stored in `spiffs_data/routes.json` and flashed to the SPIFFS
-partition. Edit this file before building to set your own routes (up to 3).
+partition. Edit this file before building to set your own routes (up to 2 pages of 3
+routes each).
 
 Example from the repository:
 
 ```json
 {
-  "routes": [
-    { "operator": "KMB", "route": "30X",  "stop_id": "92A8281D80524F78",
-      "stop_en": "Tai Ho Road Tsuen Wan", "stop_zh": "荃灣大河道",
-      "dest_en": "Whampoa Garden",        "dest_zh": "黃埔花園" },
-    { "operator": "KMB", "route": "238X", "stop_id": "88E1C9BB0B80711F",
-      "stop_en": "Riviera Gardens Bus Terminus", "stop_zh": "海濱花園總站",
-      "dest_en": "China Ferry Terminal",  "dest_zh": "中港碼頭" },
-    { "operator": "CTB", "route": "930X", "stop_id": "003449",
-      "stop_en": "Luen Yan Street",      "stop_zh": "聯仁街",
-      "dest_en": "Causeway Bay",         "dest_zh": "銅鑼灣" }
+  "pages": [
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "30X",
+          "stop_id": "92A8281D80524F78",
+          "stop_en": "TAI HO ROAD TSUEN WAN (TW290)",
+          "stop_zh": "荃灣大河道",
+          "dest_en": "WHAMPOA GARDEN",
+          "dest_zh": "黃埔花園"
+        },
+        {
+          "operator": "KMB",
+          "route": "238X",
+          "stop_id": "88E1C9BB0B80711F",
+          "stop_en": "RIVIERA GARDENS BUS TERMINUS (TW942)",
+          "stop_zh": "海濱花園總站",
+          "dest_en": "CHINA FERRY TERMINAL",
+          "dest_zh": "中港碼頭"
+        },
+        {
+          "operator": "CTB",
+          "route": "930X",
+          "stop_id": "003449",
+          "stop_en": "Luen Yan Street",
+          "stop_zh": "聯仁街",
+          "dest_en": "Causeway Bay (Moreton Terrace)",
+          "dest_zh": "銅鑼灣"
+        }
+      ]
+    },
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "49X",
+          "stop_id": "A7E87E8D797D1A52",
+          "stop_en": "WANG LUNG STREET TSUEN WAN (TW272)",
+          "stop_zh": "荃灣橫龍街",
+          "dest_en": "TSING YI FERRY",
+          "dest_zh": "青衣碼頭"
+        },
+        {
+          "operator": "KMB",
+          "route": "A31",
+          "stop_id": "35DB8602F51CF60F",
+          "stop_en": "MA TAU PA ROAD, TSUEN WAN (TW115)",
+          "stop_zh": "荃灣馬頭壩道",
+          "dest_en": "AIRPORT (GROUND TRANSPORTATION CENTRE)",
+          "dest_zh": "機場"
+        },
+        {
+          "operator": "CTB",
+          "route": "930",
+          "stop_id": "003449",
+          "stop_en": "Luen Yan Street",
+          "stop_zh": "聯仁街",
+          "dest_en": "Exhibition Centre Station",
+          "dest_zh": "會展站"
+        }
+      ]
+    }
   ],
   "refresh_seconds": 10,
   "weather": {
@@ -131,6 +200,7 @@ Example from the repository:
 
 | Field | Description |
 |-------|-------------|
+| `pages` | Array of page objects. Each page contains up to 3 route entries. If absent, a legacy top-level `"routes"` array is treated as a single page. |
 | `operator` | `"KMB"` or `"CTB"` (Citybus) |
 | `route` | Route number, e.g. `"30X"`, `"930X"` |
 | `stop_id` | Stop ID for the API endpoint. KMB uses hex IDs; Citybus uses numeric IDs. Obtain these from the respective open data portals. |
@@ -138,6 +208,23 @@ Example from the repository:
 | `dest_zh` / `dest_en` | Destination label. `dest_zh` is rendered first. For KMB terminal stops, `dest_en` is also used for direction filtering (case-insensitive matching) to exclude the opposite-direction ETAs returned by the API. |
 | `refresh_seconds` | Display render interval in seconds. Must be a divisor of 60 (e.g. 10, 12, 15, 20, 30) for clean wall-clock boundary alignment. Invalid values are rejected at boot with a warning and clamped to 10 s. The ETA fetch interval is independent (~30 s). |
 | `weather.station` | (Optional) HKO weather station name for temperature display. Default `"Hong Kong Observatory"`. Set to any station name from the HKO rhrread API response. |
+
+To add a second page, append another page object to the `pages` array:
+
+```json
+{
+  "pages": [
+    { "routes": [ /* page 1 routes */ ] },
+    { "routes": [ /* page 2 routes */ ] }
+  ],
+  "refresh_seconds": 10,
+  "weather": { "station": "Hong Kong Observatory" }
+}
+```
+
+When a second page is present, the footer shows "Page 1/2" or "Page 2/2" and the KEY
+button toggles between them. Only the currently visible page is fetched from the API.
+Single-page configs (legacy format) show no page indicator and the button is a no-op.
 
 ### Wi-Fi
 
@@ -152,19 +239,21 @@ placeholders — change them before building.
 The firmware runs two independent FreeRTOS tasks after boot:
 
 - **`eta_fetch_task`** (priority: `tskIDLE_PRIORITY+2`) — Owns the ETA fetch loop and
-  Wi-Fi modem-sleep toggling. Fetches data for all configured routes every ~30 seconds
-  with ±10% randomised jitter. Writes results into the **inactive** half of a double
-  buffer, then atomically flips the active index.
+  Wi-Fi modem-sleep toggling. Fetches data for the **currently visible page's routes**
+  every ~30 seconds with ±10% randomised jitter. Writes results into the **inactive** half
+  of a per-page double buffer, then atomically flips the active index. Page-switch
+  notifications from `display_task` trigger an immediate fetch cycle via `xTaskNotifyWait`.
 - **`display_task`** (priority: `tskIDLE_PRIORITY+3`) — Owns wall-clock render boundary
-  alignment, daily NTP resync, and `render_dashboard()`. Reads
-  from the **active** double-buffer and never waits for network data. Re-renders the
+  alignment, KEY button page toggle, daily NTP resync, and `render_dashboard()`. Reads
+  from the active double-buffer and never waits for network data. Polls the button every
+  50 ms during the sleep window so page-toggle feels instant (< 100 ms). Re-renders the
   display on wall-clock boundaries (interval from `routes.json` `refresh_seconds`,
   must be a divisor of 60).
 
 The two tasks share ETA data through a lock-free double-buffer mechanism: two full
-`route_data_t[3]` arrays plus an atomically-swapped word-sized active index. No mutex
-or semaphore is needed — the writer and reader never access the same buffer
-simultaneously.
+`route_data_t[MAX_PAGES][ROUTES_PER_PAGE]` arrays plus an atomically-swapped word-sized
+active index. No mutex or semaphore is needed — the writer and reader never access the
+same buffer simultaneously.
 
 For full design details, see [PRD.md](PRD.md), [design.md](design.md), and
 [CLAUDE.md](CLAUDE.md) in this repository.
@@ -197,8 +286,9 @@ Helvetica bitmap fonts for English text.
 This section is honest about what the project **does not do**. For the full list, see
 [PRD.md §8](PRD.md#8-out-of-scope).
 
-- **Three routes maximum** — The display layout is designed for exactly 3 routes. No
-  runtime route switching (no buttons, no touch).
+- **Up to 6 routes (2 pages of 3)** — The display layout is designed for 3 routes per page.
+  A second page of 3 routes can be configured in `routes.json`; the KEY button (GPIO18)
+  toggles between pages. Only the visible page is fetched.
 - **Battery percentage is approximate** — Uses a generic 18650 Li-ion discharge curve,
   not calibrated to the specific cell in your device. The voltage is sampled during
   Wi-Fi-idle windows and median-filtered to avoid TX sag artefacts, but the underlying

@@ -315,7 +315,8 @@ void render_route_row(int row_index, const char *route_num,
     u8g2_DrawStr(u, eta_right_edge - u8g2_GetStrWidth(u, "min"), min_bl, "min");
 }
 
-void render_footer(const char *updated_str, int battery_pct)
+void render_footer(const char *updated_str, int battery_pct,
+                   const char *page_indicator_str)
 {
     u8g2_t *u = u8g2();
 
@@ -333,8 +334,17 @@ void render_footer(const char *updated_str, int battery_pct)
     u8g2_SetFont(u, u8g2_font_profont12_mf);
     u8g2_SetDrawColor(u, 0);  /* white-on-black */
 
+    /* Left: "Updated HH:MM:SS" */
     u8g2_DrawStr(u, 14, ZONE_FOOTER_Y + 14, updated_str);
 
+    /* Page indicator 10 px after Updated text */
+    if (page_indicator_str != NULL) {
+        int w_updated = u8g2_GetStrWidth(u, updated_str);
+        int x_page = 14 + w_updated + 10;
+        u8g2_DrawStr(u, x_page, ZONE_FOOTER_Y + 14, page_indicator_str);
+    }
+
+    /* Right: "Battery: XX%" */
     int tw = u8g2_GetStrWidth(u, pct_buf);
     u8g2_DrawStr(u, DISP_WIDTH - 14 - tw, ZONE_FOOTER_Y + 14, pct_buf);
 
@@ -356,7 +366,8 @@ void render_flush(void)
  * ----------------------------------------------------------------*/
 void render_dashboard(const char *time_str, const char *temp_str,
                       const char *updated_str, int battery_pct,
-                      const route_data_t routes[3])
+                      const char *page_indicator_str,
+                      const route_data_t routes[3], int route_count)
 {
     u8g2_t *u = u8g2();
 
@@ -366,7 +377,7 @@ void render_dashboard(const char *time_str, const char *temp_str,
     /* Draw all content */
     render_header(time_str, temp_str);
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < route_count && i < 3; i++) {
         if (i > 0) {
             render_divider(row_y(i) - 1);
         }
@@ -375,7 +386,7 @@ void render_dashboard(const char *time_str, const char *temp_str,
                          routes[i].eta2, routes[i].eta3);
     }
 
-    render_footer(updated_str, battery_pct);
+    render_footer(updated_str, battery_pct, page_indicator_str);
 
     /* Diagnostic */
     for (int i = 0; i < 3; i++) {
@@ -406,7 +417,7 @@ void display_test(void)
           .stop_zh  = "將軍澳工業邨",   .eta1 = (time_t)-1, .eta2 = (time_t)-1, .eta3 = (time_t)-1 },
     };
 
-    render_dashboard("14:32", "28°C", "Updated 14:32:00", 255, test_routes);
+    render_dashboard("14:32", "28°C", "Updated 14:32:00", 255, NULL, test_routes, 3);
 
     ESP_LOGI(TAG, "DISPLAY_TEST completed");
 }

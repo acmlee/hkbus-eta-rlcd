@@ -9,6 +9,9 @@
 #define STOP_ZH_LEN    48
 #define OPERATOR_LEN   8
 
+#define MAX_PAGES       2
+#define ROUTES_PER_PAGE 3
+
 /** One monitored route entry loaded from routes.json */
 typedef struct {
     char stop_id[STOP_ID_LEN];
@@ -19,17 +22,23 @@ typedef struct {
     char stop_zh[STOP_ZH_LEN];     /** zh-HK bus-stop name (e.g. "楊屋道街市"); falls back to stop_en */
 } route_config_t;
 
+/** One page of up to ROUTES_PER_PAGE routes */
+typedef struct {
+    route_config_t routes[ROUTES_PER_PAGE];
+    int count;                          /** 0..ROUTES_PER_PAGE */
+} page_config_t;
+
 /**
- * @brief Load route list from SPIFFS (routes.json).
+ * @brief Load pages from SPIFFS (routes.json).
  *
- * Reads the file /spiffs/routes.json and populates config[].
- * Actual cJSON parsing will be refined in a later step.
+ * Supports both new "pages" array format and legacy top-level "routes" array
+ * (treated as a single page). Fills pages[] up to max_pages entries.
  *
- * @param config     Output array of route entries
- * @param max_count  Capacity of the array
- * @return Number of routes loaded, or 0 on error.
+ * @param pages     Output array of page configs
+ * @param max_pages Capacity of the array (typically MAX_PAGES)
+ * @return Number of pages loaded (1 or 2), or 0 on error.
  */
-int route_config_load(route_config_t config[], int max_count);
+int route_config_load_pages(page_config_t pages[], int max_pages);
 
 /**
  * @brief Get the refresh interval in seconds from routes.json.

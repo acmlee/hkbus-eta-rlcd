@@ -12,7 +12,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 - **No anti-aliasing.** Type and shapes are 1-bit aliased. Do not attempt pixel-smoothing on font glyphs or vector edges.
 - **No gradients, drop shadows, or transparency.** Impossible in 1-bit without dithering, and dithering looks noisy on reflective displays at typical viewing distances.
 - **Inverse text (white-on-black) for emphasis bands** — e.g. header and footer bars. Use solid black rectangles with white text knocked out. Reserve this for ≤20% of the screen area; large inverted areas exaggerate refresh artefacts on RLCD.
-- **Dithering is forbidden** except for one purpose: simulating "greyed out" / dimmed state on the reconnecting-banner overlay (50% checkerboard pattern, 2×2 px tile, applied to the affected row segments only).
+- **Dithering is forbidden** except for one purpose: simulating "greyed out" / dimmed state on a temporary overlay (50% checkerboard pattern, 2×2 px tile, applied to the affected row segments only). Currently unused in the firmware but retained as a design option.
 
 ---
 
@@ -20,7 +20,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 
 ### Font source
 - **U8g2 bitmap fonts only** (`.u8g2_font_*`). No TrueType/OpenType rasterisation at runtime.
-- zh-HK glyphs: custom fonts compiled into firmware — `u8g2_font_zhhk_dest_18` (12pt WQY Bitmap Song, 27,618 glyphs) for destination text, `u8g2_font_zhhk_stop_13` (9pt WQY Bitmap Song, 27,618 glyphs) for bus-stop names. Coverage: ASCII + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK Extension A (U+3400–U+4DBF). Generated via `bdfconv` from WenQuanYi Bitmap Song BDF files. `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` for CJK text rendering.
+- **zh-HK glyphs**: custom fonts compiled into firmware — `u8g2_font_zhhk_dest_24` (Noto Sans CJK HK Bold 24px, 27,942 glyphs) for destination text, `u8g2_font_zhhk_stop_20` (Noto Sans CJK HK Regular 20px, 27,942 glyphs) for bus-stop names. Coverage: ASCII (32–128) + CJK Symbols and Punctuation (U+3000–U+303F) + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK Extension A (U+3400–U+4DBF) + Halfwidth and Fullwidth Forms (U+FF00–U+FFEF). Generated via `otf2bdf` + `bdfconv` from Noto Sans CJK HK OTF files. `display.c` uses `u8g2_DrawUTF8`/`u8g2_GetUTF8Width` for CJK text rendering.
 
 ### Minimum readable sizes (400×300 display, 60–100 cm viewing distance)
 
@@ -28,19 +28,19 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 |---|---|---|---|
 | Header time (HH:MM) | 32 px | Bold | `u8g2_font_logisoso32_tf` |
 | Header temperature (NN°C) | 22 px | Bold | `u8g2_font_profont22_mf` |
-| Header label ("HK Bus ETA") | 14–16 px | Regular | `u8g2_font_profont15_mf` |
-| Route number | 24 px | Bold | `u8g2_font_profont22_mf` |
-| Destination (zh-HK) | 18 px | Bold | `u8g2_font_zhhk_dest_18` (custom WQY Bitmap Song) |
-| Bus-stop name (zh-HK) | 13 px | Regular | `u8g2_font_zhhk_stop_13` (custom WQY Bitmap Song) |
+| Header label ("HK Bus ETA") | 10 px | Regular | `u8g2_font_helvR10_tr` |
+| Route number | 29 px | Bold | `u8g2_font_profont29_mf` |
+| Destination (zh-HK) | 24 px | Bold | `u8g2_font_zhhk_dest_24` (custom Noto Sans CJK HK Bold) |
+| Bus-stop name (zh-HK) | 20 px | Regular | `u8g2_font_zhhk_stop_20` (custom Noto Sans CJK HK Regular) |
 | ETA — soonest (1st) value | 29 px | Bold | `u8g2_font_profont29_mf` |
-| ETA — 2nd/3rd values | 17 px | Regular | `u8g2_font_profont17_mf` |
-| Footer labels | 12–14 px | Regular | `u8g2_font_profont12_mf` |
-| Reconnecting banner | 16 px | Bold | `u8g2_font_profont17_mf` |
+| ETA — 2nd/3rd values | 22 px | Regular | `u8g2_font_profont22_mf` |
+| ETA "min" suffix | 12 px | Regular | `u8g2_font_profont12_mf` |
+| Footer labels | 12 px | Regular | `u8g2_font_profont12_mf` |
 
 ### Weight usage
 - **Bold** for data the user scans first: time, route number, destination name, and the soonest ETA value.
 - **Regular** for the header label ("HK Bus ETA") — it is a static title, not scannable data.
-- **Regular** for supporting information: bus-stop name, 2nd/3rd ETA values, footer labels, countdown.
+- **Regular** for supporting information: bus-stop name, 2nd/3rd ETA values, footer labels, page indicator.
 - **No italic or oblique.** Bitmap fonts rarely include these, and simulated oblique (shear) looks broken in 1-bit.
 
 ### Destination vs. bus-stop hierarchy
@@ -50,11 +50,10 @@ Each route row must show **both** the destination (往 — where the bus is goin
 - This pairing exists because the same route number can stop at more than one physical stop in a user's viewing context — showing only the destination without the stop name creates ambiguity about which physical location the ETA applies to.
 
 ### Line-height
+- For 29 px glyphs, allow 40 px row height (1.38×).
 - For 24 px glyphs, allow 32 px row height (1.33×).
+- For 22 px glyphs, allow 30 px row height (1.36×).
 - For 20 px glyphs, allow 28 px row height (1.4×).
-- For 18 px glyphs, allow 24 px row height (1.33×).
-- For 16 px glyphs, allow 22 px row height (1.375×).
-- For 13 px glyphs, allow 18 px row height (1.38×).
 - For 12 px footer, allow 16 px row height (1.33×).
 
 ---
@@ -77,7 +76,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 │ 堅尼地城海旁 │
 ├──────────────────────────────────────────────────────────┤ ← 1px dividing line
 │ FOOTER BAND (solid black bg, white text, ~18 px high) │ ← bottom ~6%
-│ Updated 14:32:00          Battery: 72% │
+│ Updated 14:32:00  Page 1/2               Battery: 72% │
 └──────────────────────────────────────────────────────────┘
 
 
@@ -100,9 +99,8 @@ Each route row must show **both** the destination (往 — where the bus is goin
         - A single shared "min" suffix label may appear once beneath or beside the group rather than repeated 3×, to avoid visual clutter.
         - If a route has fewer than 3 upcoming buses, remaining slots show "--" in the same alignment and weight as their column position (2nd/3rd style), not the bold 1st-position style.
 3. **Row dividers** — 1 px horizontal line (single row of black pixels) between each route row. Not between header and row 1 (the header band itself is the separator).
-4. **Footer band** — Full-width filled black rect. Two text elements: left-aligned "Updated HH:MM:SS", right-aligned "Battery: XX%". No icon, no border — the black fill is the boundary.
-5. **Reconnecting banner** — Full-width black rect, immediately below the header band, same height as a route row (~32 px). White "Reconnecting..." text centred. Route rows beneath it remain in their normal positions but with the checkerboard dither overlay (see §1).
-6. **Testing / init pattern** — On boot, show all-pixels-on (full black) for 500 ms before transitioning to the dashboard. No splash logo, no progress bar — just the flash.
+4. **Footer band** — Full-width filled black rect. Three text elements: left-aligned "Updated HH:MM:SS", "Page X/Y" indicator placed 10 px to the right of the Updated text (hidden in single-page mode), right-aligned "Battery: XX%". No icon, no border — the black fill is the boundary.
+5. **Testing / init pattern** — On boot, show all-pixels-on (full black) for 500 ms before transitioning to the dashboard. No splash logo, no progress bar — just the flash.
 
 ---
 
@@ -123,7 +121,7 @@ The PRD mandates exactly 3 routes. At 3 rows the display is sparsely populated b
 | Type | What to borrow |
 |---|---|
 | **E-ink weather stations** (OpenWeather 2.9", Waveshare 4.2") | Header band solid black, data in labelled columns, footer for last-updated. The banded top/bottom structure is proven at this form factor. |
-| **Transit countdown boards** (London Tube dot-matrix, MTR platform displays) | Right-aligned minutes with monospaced digits, route number as the primary visual anchor, destination as secondary text, multiple upcoming arrival times shown left-to-right with the soonest emphasised. |
+| **Transit information displays** (London Tube dot-matrix, MTR platform displays) | Right-aligned minutes with monospaced digits, route number as the primary visual anchor, destination as secondary text, multiple upcoming arrival times shown left-to-right with the soonest emphasised. |
 | **Casio / calculator-style LCD** (Classic watch face) | Large bold digits for the primary metric, small supporting text below. Effective despite severe resolution limits. |
 | **Berlin U-Bahn e-paper platform signs** | Single-row-per-line structure, no gridlines — whitespace and 1px dividers separate rows. Inverse white-on-black for the top status bar. |
 
@@ -136,7 +134,7 @@ The PRD mandates exactly 3 routes. At 3 rows the display is sparsely populated b
 | **Colour for status** (green=OK, red=late) | There is no colour. Use text ("--", "Delayed") or shape (inverse row) instead. |
 | **Hairline fonts / ultra-light weights** | 1 px strokes disappear or look broken on reflective displays at normal viewing distance. Minimum stroke: 2 px for any standalone line. |
 | **Low-contrast greys for "disabled" state** | Grey and white are the same colour on this display. Use the checkerboard dither pattern for dimmed state, or omit the element entirely. |
-| **Icons without text labels** | A WiFi icon means nothing if the user can't see the fine detail. Always pair with text ("Reconnecting..."). |
+| **Icons without text labels** | A WiFi icon means nothing if the user can't see the fine detail. Always pair with text. |
 | **Thin borders around every cell** | Creates visual noise. Use 1 px horizontal dividers *between* rows only, not around them. No vertical gridlines in data rows. |
 | **Overlapping or clipped text** | In 1-bit, clipped text looks like a rendering bug. Ensure every string fits its allocated column; shrink font if needed. |
 | **Animated transitions** | RLCD refresh is not fast enough for smooth animation. No fade, slide, or wipe effects. Instant frame replacement only. |
@@ -163,7 +161,9 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Neither destination nor bus-stop text is truncated or wrapped; if either overflows, that line's font size is reduced independently.
 - [ ] "Greyed out" / dimmed state uses a checkerboard dither (2×2 px tile), not a lighter colour.
 - [ ] No icons without accompanying text labels.
-- [ ] Countdown footer shows "Battery: XX%" (battery percentage), replacing the old "Next: NNs" countdown.
+- [ ] Footer shows "Battery: XX%" (battery percentage), replacing the old "Next: NNs" text.
+- [ ] Footer shows "Page X/Y" indicator (profont12, 10 px after "Updated HH:MM:SS") when multi-page mode is active. Hidden in single-page mode.
+- [ ] Pressing the KEY button (GPIO18) toggles between page 1 and page 2 (if configured). The page indicator updates immediately.
 - [ ] Date/time format: `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
 - [ ] The boot flash (500 ms all-pixels-on) is the only transition — no animations elsewhere.
 - [ ] Checkerboard dither (if used) is applied only to the route content area, never to the header or footer bands.

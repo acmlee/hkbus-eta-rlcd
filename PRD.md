@@ -34,7 +34,7 @@ Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP
         - Route number (e.g. "1A"), medium-bold font
         - Destination (zh-HK e.g. "黃埔花園"), same row, lighter style
         - ETA in minutes (e.g. "5 min" or "--" if unavailable), right-aligned
-    - **Footer** (bottom ~10%): "Updated HH:MM:SS" on the left, "Battery: XX%" (battery percentage) on the right.
+    - **Footer** (bottom ~10%): "Updated HH:MM:SS" on the left, "Page X/Y" indicator 10 px to the right of the Updated text (hidden in single-page mode), "Battery: XX%" on the right.
     - **Reconnecting banner**: If Wi-Fi is lost mid-operation, overlay or insert a "Reconnecting..." banner row immediately below the header. Keep the last known ETA values on screen but visually greyed out (e.g. inverse/dimmed style). The banner persists until Wi-Fi reconnects — no auto-dismiss.
 8. **Error handling per operator** — If one operator's API fails (network error, HTTP non-200, timeout) while the other succeeds, the last-known-good ETA values for the failed operator's routes are preserved on screen for up to 3 minutes (measured from the ETA timestamp, not the fetch time). If the stale ETA is more than 3 minutes in the past, it expires to "--". The working operator's routes fetch and display normally. Do *not* halt the entire refresh cycle.
 9. **Refresh cadence** — The ETA fetch cycle and the display render cycle are **decoupled**. The display re-renders on wall-clock boundaries so the header clock stays precisely aligned regardless of network/HTTP fetch latency. The interval is read from `routes.json` `refresh_seconds` and must be a divisor of 60 for clean wall-clock alignment (invalid values are clamped to 10 s). The ETA fetch runs on a longer cadence (~30 s, jittered). Always render the last known ETA values — never block the render cycle waiting for a fresh fetch. Current values: see CLAUDE.md §Display Refresh.
@@ -140,8 +140,8 @@ Two full `route_data_t[3]` buffers (`s_route_buf[2][3]`) plus an atomically-swap
 The following are explicitly **not** part of this version:
 
 - Runtime route switching via buttons, touch, or any UI interaction
+- Support for more than 3 simultaneous routes **per page** (but up to 2 pages of 3 routes each, toggled via KEY button)
 - MTR (港鐵), GMB (綠色專線小巴), or any transport operator beyond KMB and Citybus
-- Support for more than 3 simultaneous routes
 - OTA firmware updates
 - MicroSD card usage (slot present, software ignores it entirely)
 - Display contrast or brightness runtime adjustment
@@ -203,4 +203,5 @@ The following have been identified as future scope items and deliberately deferr
 | 2 | Larger zh-HK fonts (dest + stop) | **Implemented** | 24px Noto Sans CJK HK Bold (dest) + 20px Regular (stop). See docs/plan-larger-fonts-noto-otf2bdf.md. |
 | 3 | Temperature/humidity display | **Implemented** | Header now shows `NN°C` from HKO rhrread API (station: configurable via `routes.json` `weather.station`, default "Hong Kong Observatory"). Font: `u8g2_font_profont22_mf` (22 px bold). Fetched every 20th `eta_fetch_task` cycle (~10 min). Stale TTL: 30 min (hidden if stale). Format: `28°C`. Failure: hide entirely (no placeholder, no `--°C`). Piggyback on existing Wi-Fi-awake window — no separate task. Files: `weather_hko.c/h`, `http_util.c/h`. |
 | 4 | Deep-sleep with periodic wake | Future | — |
-| 5 | Display sleep + button wake | **Pending** | Proposed feature: display off (0x28 sleep) outside a configurable morning window; button-triggered wake (on-board KEY button, GPIO18) for a configurable timeout. Full plan: `docs/plan-display-sleep-button-wake.md`. This is a new feature independent of the now-removed voltage-profile code (Decision #7). |
+| 5 | Display sleep + button wake | **Pending** | Proposed feature: display off (0x28 sleep) outside a configurable morning window; button-triggered wake (on-board KEY button, GPIO18) for a configurable timeout. Full plan: `docs/plan-display-sleep-button-wake.md`. **NOTE**: GPIO18 is now claimed by page-toggle (`docs/plan-second-page.md`). The sleep plan must be reworked (long-press discriminator or different button). |
+| 6 | Second page (page toggle) | **Implemented 2026-07-26** | Second page of 3 routes, toggled via KEY button (GPIO18). Footer shows "Page X/Y". Only visible page fetched. See `docs/plan-second-page.md`.

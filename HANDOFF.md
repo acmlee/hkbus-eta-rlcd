@@ -6,16 +6,7 @@
 
 ## 1. Last Completed Step
 
-- **[2026-07-26] Route number + 2nd/3rd ETA font tuning** — Route number changed from `u8g2_font_profont22_mf` (24px) to `u8g2_font_profont29_mf` (29px, matching eta1). 2nd/3rd ETA changed from `u8g2_font_profont17_mf` (17px) to `u8g2_font_profont22_mf` (22px). Col 1 width widened from 48px to 60px; Col 2 offset from 64px to 92px. ETA gap increased from 10px to 12px. Updated: display.h, display.c, design.md, CLAUDE.md. Build: PASS, binary 0x4c7c10 bytes (~4.78 MB, 8 MB partition, 40% free). No new warnings.
-  - **http_util.c/h**: Extracted `http_get_body()` from `eta_fetcher.c` into a shared module with `log_tag` parameter (replaces `operator`/`route` params). `eta_fetcher.c` updated to include `http_util.h` and use new signature.
-  - **weather_hko.c/h**: New module with `weather_init()`, `weather_fetch_once()`, `weather_snapshot()`, `weather_get_temp_str()`. Spinlock-protected storage (mirrors battery.c pattern). HKO rhrread API fetch, JSON parse, station matching, 30-min TTL.
-  - **display.c/h**: `render_header()` and `render_dashboard()` now accept `const char *temp_str` parameter. Temperature drawn at 22 px bold (`u8g2_font_profont22_mf`), 16 px right of title, same baseline (y=24). Overlap guard prevents collision with time.
-  - **route_config.c/h**: Added `s_weather_station` static buffer, `route_config_get_weather_station()` accessor, and `"weather"."station"` JSON parsing.
-  - **main.c**: `weather_init()` in `app_main()`, weather fetch counter (`s_weather_cycle`, starts at 20) in `eta_fetch_task()` (every 20th cycle), `weather_get_temp_str()` in `display_task()`.
-  - **CMakeLists.txt**: Added `http_util.c` and `weather_hko.c` to SRCS.
-  - **routes.json**: Added `"weather": { "station": "Hong Kong Observatory" }`.
-  - **Docs**: PRD.md (FR #13, TBC #3 → Implemented, §6 arch note), CLAUDE.md (new "Weather Temperature" section), HANDOFF.md (this entry).
-  - Build: PASS, binary 0x321f70 bytes (~3.21 MB, 22% free). No new warnings.
+- **[2026-07-26] Page-toggle sluggishness fix** — `display_task` bottom-of-loop sleep changed from `vTaskDelay(next_seconds * 1000)` to a 50 ms polling loop. On each 50 ms tick, `button_consume_presses()` is checked. If a press is detected, page toggles, fetch task is notified, bounces are drained (50 ms delay + second consume), then the loop breaks to re-enter the top of `while(1)` which renders the new page immediately. Latency reduced from up to 10 s to ~50 ms. Removed the earlier band-aid immediate-render block. Build: PASS, binary 0x4c89e0 bytes (40% free).
 
 - **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
 
@@ -57,17 +48,16 @@
 
 | File | Change |
 |------|--------|
-| `main/display.h` | **Modify** — COL_ROUTE_W 48→60, COL_INFO_X 64→92. |
-| `main/display.c` | **Modify** — Route number font (22→29), 2nd/3rd ETA font (17→22), gap_eta 10→12. |
-| `design.md` | **Modify** — Updated typography table, Col 1 width, ETA sizes. |
-| `CLAUDE.md` | **Modify** — Updated ETA Fonts section, added Route Number Font section. |
-| `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3, §5. |
+| `main/main.c` | **Modify** — Replaced `vTaskDelay` sleep with 50 ms polling loop + button check at bottom of `display_task`. Removed band-aid immediate-render block. |
+| `HANDOFF.md` | **Modify** — This file. Updated §1, §3, §5. |
+
+Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c, routes.json, CMakeLists.txt, design.md, CLAUDE.md, PRD.md) are recorded in the prior session's §2 and §1. The §2 table above only reflects the current session's changes.
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x4c7c10 bytes (~4.78 MB, 8 MB factory partition, 40% free). Route number and 2nd/3rd ETA font sizes tuned. No new warnings.
+- **Last build**: PASS — `idf.py build` completed. Binary 0x4c89e0 bytes (~4.78 MB, 8 MB factory partition, 40% free). Page-toggle latency improved: 50 ms polling loop replaces wall-clock wait. No new warnings.
 
 ---
 
@@ -78,9 +68,10 @@
 - **Fetch failure ETA preservation**: FIXED — Failed fetches now preserve last-known-good ETAs for up to 3 minutes, then expire to "--".
 - **Wi-Fi disconnect stuck at "--"**: FIXED — Added `esp_wifi_connect()` to `WIFI_EVENT_STA_DISCONNECTED` handler. The boot-time retry loop was the only reconnect mechanism, but it exits when `app_main` returns. ESP-IDF has no built-in auto-reconnect.
 - **Tier 2 (adaptive/night-mode refresh) and Tier 3 (low-battery UX) deferred** — Documented in PRD.md §9 Open/TBC Decisions. Not implemented.
+- **GPIO18 conflict with pending sleep plan** — Page-toggle now owns GPIO18 short-press. The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked (long-press discriminator or different button) when implemented.
 
 ---
 
 ## 5. Next Step
 
-1. **Continue feature work** — Next priority TBD. Consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`).
+1. **Continue feature work** — Next priority TBD. Consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).

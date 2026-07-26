@@ -237,3 +237,14 @@ history of this feature's lifecycle.
 - **Failure behaviour**: HTTP error → log warning, preserve last-known-good. JSON parse failure → log warning, preserve last-known-good. Station not found in response → log warning, no update. After 30 min of no successful fetch, temperature disappears from header.
 - **HKO API response shape differs from KMB/Citybus** — never assume interchangeability.
 
+## Multi-Page Display
+- **JSON schema**: `routes.json` uses a top-level `"pages"` array, each page object contains a `"routes"` array. Legacy top-level `"routes"` is accepted as a single-page fallback.
+- **Fetch strategy**: Only the visible page's routes are fetched. `eta_fetch_task` reads `s_active_page` once per cycle and fetches only that page's routes.
+- **Page toggle**: KEY button (GPIO18) toggles `s_active_page` (0↔1). `display_task` calls `button_consume_presses()` each tick. If `s_page_count > 1` and a press is detected, the page toggles and `xTaskNotifyGive` wakes `eta_fetch_task` for an immediate fetch.
+- **Footer indicator**: "Page X/Y" rendered 10 px after "Updated HH:MM:SS" in the footer band by `render_footer()`. Hidden when `s_page_count == 1`.
+- **Button driver**: `main/button.c` — GPIO18 falling-edge ISR, atomic press counter. `button_consume_presses()` returns count since last call and resets to 0.
+- **GPIO18 ownership**: Page-toggle owns short-press. The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked (long-press discriminator or different button) when implemented.
+- **Double-buffer**: `s_route_buf[2][MAX_PAGES][ROUTES_PER_PAGE]` — 2 buffers × 2 pages × 3 routes. `s_active_buf_idx` and `s_active_page` are atomically-swapped `volatile int` (word-sized, no tearing on ESP32-S3).
+- **Partial pages**: If a page has fewer than 3 routes, remaining rows render blank (no divider, no text, no ETA). Controlled by `route_count` parameter in `render_dashboard()`.
+- **Page 2 optional**: If `s_page_count == 1` (legacy JSON or single page), button press is a no-op and footer hides the page indicator.
+
