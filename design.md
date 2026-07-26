@@ -99,7 +99,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
         - A single shared "min" suffix label may appear once beneath or beside the group rather than repeated 3×, to avoid visual clutter.
         - If a route has fewer than 3 upcoming buses, remaining slots show "--" in the same alignment and weight as their column position (2nd/3rd style), not the bold 1st-position style.
 3. **Row dividers** — 1 px horizontal line (single row of black pixels) between each route row. Not between header and row 1 (the header band itself is the separator).
-4. **Footer band** — Full-width filled black rect. Three text elements: left-aligned "Updated HH:MM:SS", "Page X/Y" indicator placed 10 px to the right of the Updated text (hidden in single-page mode), right-aligned "Battery: XX%". No icon, no border — the black fill is the boundary.
+4. **Footer band** — Full-width filled black rect. Three text elements: left-aligned "Updated HH:MM:SS" (or "Connecting..." if Wi-Fi is not connected), "Page X/Y" indicator placed 10 px to the right of the Updated text (hidden in single-page mode), right-aligned "Battery: XX%". No icon, no border — the black fill is the boundary.
 5. **Testing / init pattern** — On boot, show all-pixels-on (full black) for 500 ms before transitioning to the dashboard. No splash logo, no progress bar — just the flash.
 
 ---
@@ -161,8 +161,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Neither destination nor bus-stop text is truncated or wrapped; if either overflows, that line's font size is reduced independently.
 - [ ] "Greyed out" / dimmed state uses a checkerboard dither (2×2 px tile), not a lighter colour.
 - [ ] No icons without accompanying text labels.
-- [ ] Footer shows "Battery: XX%" (battery percentage), replacing the old "Next: NNs" text.
-- [ ] Footer shows "Page X/Y" indicator (profont12, 10 px after "Updated HH:MM:SS") when multi-page mode is active. Hidden in single-page mode.
+- [ ] Footer shows "Updated HH:MM:SS" (or "Connecting..." if Wi-Fi is not connected), "Battery: XX%" right-aligned, "Page X/Y" indicator (profont12, 10 px after "Updated HH:MM:SS") when multi-page mode is active. Hidden in single-page mode.
 - [ ] Pressing the KEY button (GPIO18) toggles between page 1 and page 2 (if configured). The page indicator updates immediately.
 - [ ] Date/time format: `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
 - [ ] The boot flash (500 ms all-pixels-on) is the only transition — no animations elsewhere.

@@ -50,6 +50,12 @@ static const char *TAG = "hkbus";
 /* Track reconnection attempts for diagnostic logging */
 static int s_reconnect_count = 0;
 
+/* Wi-Fi connection state — shared between wifi_event_handler (ISR-like
+ * context) and display_task.  Spinlock protects cross-core visibility
+ * on the dual-core ESP32-S3 (no hardware cache coherency). */
+static portMUX_TYPE s_wifi_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool         s_wifi_connected = false;
+
 /* ------------------------------------------------------------------
  * Double-buffered shared ETA data (per-page)
  *
@@ -98,12 +104,18 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         s_reconnect_count++;
         ESP_LOGW(TAG, "Wi-Fi disconnected, reconnecting (attempt %d)...",
                  s_reconnect_count);
+        taskENTER_CRITICAL(&s_wifi_lock);
+        s_wifi_connected = false;
+        taskEXIT_CRITICAL(&s_wifi_lock);
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_wifi_connect();
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *evt = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&evt->ip_info.ip));
         s_reconnect_count = 0;
+        taskENTER_CRITICAL(&s_wifi_lock);
+        s_wifi_connected = true;
+        taskEXIT_CRITICAL(&s_wifi_lock);
         xEventGroupSetBits(events, WIFI_CONNECTED_BIT);
     }
 }
@@ -439,12 +451,19 @@ static void display_task(void *arg)
         int buf_idx = s_active_buf_idx;
         int page    = s_active_page;
 
-        /* ---- 4. Build last-updated timestamp ---- */
-        time(&now);
-        ti = localtime(&now);
-        snprintf(last_updated, sizeof(last_updated),
-                 "Updated %02d:%02d:%02d",
-                 ti->tm_hour, ti->tm_min, ti->tm_sec);
+        /* ---- 4. Build footer string (timestamp or "Connecting...") ---- */
+        taskENTER_CRITICAL(&s_wifi_lock);
+        bool wifi_ok = s_wifi_connected;
+        taskEXIT_CRITICAL(&s_wifi_lock);
+        if (wifi_ok) {
+            time(&now);
+            ti = localtime(&now);
+            snprintf(last_updated, sizeof(last_updated),
+                     "Updated %02d:%02d:%02d",
+                     ti->tm_hour, ti->tm_min, ti->tm_sec);
+        } else {
+            snprintf(last_updated, sizeof(last_updated), "Connecting...");
+        }
 
         /* ---- 4a. Read battery percentage (cached — sampled by
          * eta_fetch_task during Wi-Fi-idle windows). ---- */

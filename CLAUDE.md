@@ -237,6 +237,15 @@ history of this feature's lifecycle.
 - **Failure behaviour**: HTTP error → log warning, preserve last-known-good. JSON parse failure → log warning, preserve last-known-good. Station not found in response → log warning, no update. After 30 min of no successful fetch, temperature disappears from header.
 - **HKO API response shape differs from KMB/Citybus** — never assume interchangeability.
 
+## WiFi Connection State
+- **Spinlock-protected state**: `s_wifi_connected` (`bool`) guarded by `s_wifi_lock` (`portMUX_TYPE`). Writer: `wifi_event_handler()` in `main.c`. Reader: `display_task()`.
+- **Display behaviour**: When WiFi is disconnected (or never connected), the footer band replaces `"Updated HH:MM:SS"` with `"Connecting..."`. This covers both the boot-time "never connected" case and the runtime "disconnected and reconnecting" case with a single string.
+- **State transitions**:
+  - `WIFI_EVENT_STA_DISCONNECTED` → `s_wifi_connected = false` (before `esp_wifi_connect()`)
+  - `IP_EVENT_STA_GOT_IP` → `s_wifi_connected = true` (before `xEventGroupSetBits()`)
+- **Stale ETA behaviour**: During disconnection, `eta_fetch_task` preserves last-known-good ETAs for up to 180 s, then expires to `"--"`. The footer shows "Connecting..." throughout.
+- **No new files**: The state variable is `static` in `main.c`, declared adjacent to the existing globals. No new header.
+
 ## Multi-Page Display
 - **JSON schema**: `routes.json` uses a top-level `"pages"` array, each page object contains a `"routes"` array. Legacy top-level `"routes"` is accepted as a single-page fallback.
 - **Fetch strategy**: Only the visible page's routes are fetched. `eta_fetch_task` reads `s_active_page` once per cycle and fetches only that page's routes.

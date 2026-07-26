@@ -33,6 +33,10 @@ display showing "when's the next bus" without needing to pull out a phone.
 - **Decoupled task architecture** — ETA fetching and display rendering run as independent
   FreeRTOS tasks. The display re-renders on wall-clock boundaries (every 15 seconds) and
   never waits for network data. ETAs are shared via a lock-free double buffer.
+- **Wi-Fi disconnect indicator** — When Wi-Fi is disconnected (boot or runtime), the footer
+  shows "Connecting..." instead of "Updated HH:MM:SS". The last-known ETAs remain visible
+  for up to 3 minutes, then expire to "--". The indicator clears automatically on
+  reconnection.
 - **Daily NTP resync** — Automatic clock-drift correction once per day at 06:00 via
   `stdtime.gov.hk`.
 - **No cloud dependency** — Once configured, the device operates independently on your

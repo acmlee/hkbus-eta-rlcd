@@ -6,7 +6,7 @@
 
 ## 1. Last Completed Step
 
-- **[2026-07-26] Page-toggle sluggishness fix** — `display_task` bottom-of-loop sleep changed from `vTaskDelay(next_seconds * 1000)` to a 50 ms polling loop. On each 50 ms tick, `button_consume_presses()` is checked. If a press is detected, page toggles, fetch task is notified, bounces are drained (50 ms delay + second consume), then the loop breaks to re-enter the top of `while(1)` which renders the new page immediately. Latency reduced from up to 10 s to ~50 ms. Removed the earlier band-aid immediate-render block. Build: PASS, binary 0x4c89e0 bytes (40% free).
+- **[2026-07-26] "Connecting..." footer when Wi-Fi is disconnected** — Added spinlock-protected `s_wifi_connected` state shared between `wifi_event_handler` and `display_task`. On `WIFI_EVENT_STA_DISCONNECTED`: set to `false`. On `IP_EVENT_STA_GOT_IP`: set to `true`. `display_task` reads the state each render cycle: if `true`, shows "Updated HH:MM:SS"; if `false`, shows "Connecting...". Uses `portMUX_TYPE` spinlock (matching battery/weather pattern) for cross-core visibility on dual-core ESP32-S3. No new files. Build: PASS, binary 0x4c8a70 bytes (40% free).
 
 - **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
 
@@ -48,8 +48,11 @@
 
 | File | Change |
 |------|--------|
-| `main/main.c` | **Modify** — Replaced `vTaskDelay` sleep with 50 ms polling loop + button check at bottom of `display_task`. Removed band-aid immediate-render block. |
-| `HANDOFF.md` | **Modify** — This file. Updated §1, §3, §5. |
+| `main/main.c` | **Modify** — Added `s_wifi_lock` (`portMUX_TYPE`) and `s_wifi_connected` (`bool`) globals. Updated `wifi_event_handler()` to set `s_wifi_connected` on DISCONNECTED/GOT_IP events. Updated `display_task()` to show "Connecting..." instead of "Updated HH:MM:SS" when WiFi is disconnected. |
+| `CLAUDE.md` | **Modify** — Added "WiFi Connection State" section documenting the spinlock pattern, state transitions, and stale-ETA behaviour. |
+| `PRD.md` | **Modify** — Replaced "Reconnecting..." banner spec with "Connecting..." in footer band. Updated FR 7 footer description and Wi-Fi reconnect NFR. |
+| `design.md` | **Modify** — Updated footer band description and self-verification checklist to reflect "Connecting..." text. |
+| `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3, §5. |
 
 Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c, routes.json, CMakeLists.txt, design.md, CLAUDE.md, PRD.md) are recorded in the prior session's §2 and §1. The §2 table above only reflects the current session's changes.
 
@@ -57,7 +60,7 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x4c89e0 bytes (~4.78 MB, 8 MB factory partition, 40% free). Page-toggle latency improved: 50 ms polling loop replaces wall-clock wait. No new warnings.
+- **Last build**: PASS — `idf.py build` completed. Binary 0x4c8a70 bytes (~4.78 MB, 8 MB factory partition, 40% free). Added "Connecting..." footer text when Wi-Fi disconnected. No new warnings.
 
 ---
 
@@ -67,6 +70,7 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 - **KMB body capture overflow**: FIXED — KMB now uses route-specific `/eta/` endpoint (~700 bytes). Dynamic buffer growth (realloc) added as safety net.
 - **Fetch failure ETA preservation**: FIXED — Failed fetches now preserve last-known-good ETAs for up to 3 minutes, then expire to "--".
 - **Wi-Fi disconnect stuck at "--"**: FIXED — Added `esp_wifi_connect()` to `WIFI_EVENT_STA_DISCONNECTED` handler. The boot-time retry loop was the only reconnect mechanism, but it exits when `app_main` returns. ESP-IDF has no built-in auto-reconnect.
+- **"Connecting..." footer**: IMPLEMENTED — Footer shows "Connecting..." when WiFi is disconnected (boot or runtime), reverts to "Updated HH:MM:SS" on reconnection. Uses spinlock-protected bool for cross-core safety.
 - **Tier 2 (adaptive/night-mode refresh) and Tier 3 (low-battery UX) deferred** — Documented in PRD.md §9 Open/TBC Decisions. Not implemented.
 - **GPIO18 conflict with pending sleep plan** — Page-toggle now owns GPIO18 short-press. The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked (long-press discriminator or different button) when implemented.
 
@@ -74,4 +78,5 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 
 ## 5. Next Step
 
-1. **Continue feature work** — Next priority TBD. Consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).
+1. **Test "Connecting..." footer on physical device** — Flash the new firmware and verify the footer shows "Connecting..." when Wi-Fi is disconnected and switches to "Updated HH:MM:SS" on reconnection. Validate spinlock cross-core correctness.
+2. **Continue feature work** — After verification, consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).
