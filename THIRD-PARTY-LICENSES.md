@@ -7,30 +7,23 @@ redistributing this firmware should review these terms.
 
 ---
 
-## WenQuanYi Bitmap Song Font (GPL v2 or later)
+## Noto Sans CJK Font (SIL Open Font License 1.1)
 
 **Component**: Compiled zh-HK (Traditional Chinese) bitmap font subsets used for
 destination and bus-stop name rendering
-(`main/fonts/u8g2_font_zhhk_dest_18.c`, `main/fonts/u8g2_font_zhhk_stop_13.c`).
+(`main/fonts/u8g2_font_zhhk_dest_24.c`, `main/fonts/u8g2_font_zhhk_stop_20.c`).
 
-**Source**: WenQuanYi Bitmap Song, http://wenq.org/wqy2/index.cgi?BitmapSong_en
+**Source**: Noto Sans CJK HK, https://github.com/notofonts/noto-cjk
 
-**License**: GNU General Public License v2.0 or later (GPLv2+)
+**License**: SIL Open Font License 1.1 (OFL-1.1)
 
-**Important notice**: The font data compiled into the above files is derived
-from a GPL-licensed source. GPL is a copyleft license. While this project's
-own original source code is MIT-licensed, the embedded font data itself
-remains subject to GPLv2+ terms. Depending on interpretation, GPL's copyleft
-provisions may extend to the compiled firmware binary as a "combined work"
-when this font data is statically linked into it. If you intend to
-redistribute compiled binaries of this firmware, you should independently
-assess your GPL compliance obligations, or consider substituting an
-OFL-licensed font source (e.g. Noto Sans CJK / Source Han Sans) for the zh-HK
-glyphs to avoid this ambiguity entirely.
-
-A full copy of the GPLv2 license text is included in this repository at
-`third_party_licenses/GPLv2.txt` (or linked at
-https://www.gnu.org/licenses/old-licenses/gpl-2.0.html).
+**Notice**: The font data compiled into the above files is derived from Noto Sans CJK HK,
+which is licensed under the SIL Open Font License 1.1. OFL-1.1 is a permissive font license
+that explicitly allows embedding fonts in documents and software without requiring copyleft
+attribution for the surrounding project. The OFL requires that the font software itself
+(not the project as a whole) retains its license terms when distributed. A full copy of the
+OFL-1.1 license text is included in this repository at `third_party_licenses/OFL.txt` (or
+linked at https://openfontlicense.org/open-font-license-official-text/).
 
 ---
 
@@ -98,17 +91,3 @@ See https://www.hko.gov.hk/en/abouthko/opendata.htm for full terms. This
 project consumes this API as a data source only; no API code or data is
 redistributed as part of this repository.
 
----
-
-## Noto Sans CJK / Source Han Sans (if applicable)
-
-[Only include this section if the Noto/otf2bdf larger-font work has actually
-been completed and integrated — confirm against HANDOFF.md before including.]
-
-**Component**: [font files, if used]
-
-**License**: SIL Open Font License 1.1 (OFL-1.1)
-
-**Notice**: Permissively licensed for embedding, no copyleft obligations on
-the surrounding project. Retained here for attribution per OFL's
-requirements.

@@ -17,8 +17,9 @@ display showing "when's the next bus" without needing to pull out a phone.
   Citybus (城巴) open APIs, fetched every ~30 seconds with randomised jitter to avoid
   thundering-herd alignment.
 - **Traditional Chinese rendering** — zh-HK destination and bus-stop names rendered on the
-  display via custom U8g2 bitmap font subsets (WenQuanYi Bitmap Song, 27,618 glyphs
-  covering CJK Unified Ideographs + Extension A). ASCII fallback for pure-English strings.
+  display via custom U8g2 bitmap font subsets (Noto Sans CJK HK, 27,942 glyphs covering
+  CJK Unified Ideographs + Extension A + CJK punctuation + Fullwidth Forms). ASCII fallback
+  for pure-English strings.
 - **Battery percentage indicator** — ADC-based battery voltage monitoring (ADC1, GPIO4)
   with a piecewise-linear 11-point Li-ion discharge curve approximation, median filtering,
   exponential smoothing, and Wi-Fi-idle-window sampling to avoid false readings from TX
@@ -173,24 +174,21 @@ For full design details, see [PRD.md](PRD.md), [design.md](design.md), and
 ## zh-HK Font Rendering
 
 Traditional Chinese (zh-HK) destination and bus-stop names are rendered using custom
-U8g2 bitmap fonts generated from **WenQuanYi Bitmap Song** via `bdfconv` (from the U8g2
-toolchain):
+U8g2 bitmap fonts generated from **Noto Sans CJK HK** via `otf2bdf` + `bdfconv` (from the
+U8g2 toolchain):
 
 | Font | Source | Glyph Height | Glyphs | Binary Size |
 |------|--------|-------------|--------|-------------|
-| `u8g2_font_zhhk_dest_18` | `wenquanyi_12pt.bdf` (16 px) | 19 px | 27,618 | ~1.2 MB |
-| `u8g2_font_zhhk_stop_13` | `wenquanyi_9pt.bdf` (12 px) | 15 px | 27,618 | ~766 KB |
+| `u8g2_font_zhhk_dest_24` | Noto Sans CJK HK Bold 24px | 34 px | 27,942 | ~2.0 MB |
+| `u8g2_font_zhhk_stop_20` | Noto Sans CJK HK Regular 20px | 28 px | 27,942 | ~1.6 MB |
 
-Coverage: ASCII (32–128) + CJK Unified Ideographs (U+4E00–U+9FFF) + CJK Extension A
-(U+3400–U+4DBF).
+Coverage: ASCII (32–128) + CJK Symbols and Punctuation (U+3000–U+303F) + CJK Unified
+Ideographs (U+4E00–U+9FFF) + CJK Extension A (U+3400–U+4DBF) + Halfwidth and Fullwidth
+Forms (U+FF00–U+FFEF).
 
 The destination line is prefixed with "往" (drawn in the stop-font size) to indicate
 direction. If a zh-HK field is absent in `routes.json`, the firmware falls back to
 Helvetica bitmap fonts for English text.
-
-A plan to upgrade to larger Noto Sans CJK HK fonts (24px/20px) exists at
-[`docs/plan-larger-fonts-noto-otf2bdf.md`](docs/plan-larger-fonts-noto-otf2bdf.md) but
-is deferred — the current WenQuanYi fonts are confirmed working on the physical display.
 
 ---
 
@@ -221,8 +219,8 @@ This section is honest about what the project **does not do**. For the full list
 
 This project's original source code is licensed under the MIT License (see
 [LICENSE](LICENSE)). This firmware bundles or is derived from several third-party
-components under their own separate licenses, including a **GPL-licensed font component**
-(WenQuanYi Bitmap Song). See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for
+components under their own separate licenses, including an **OFL-licensed font component**
+(Noto Sans CJK HK). See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for
 full details before redistributing compiled binaries.
 
 ---
@@ -232,8 +230,8 @@ full details before redistributing compiled binaries.
 - **Waveshare** — For the ST7305 reference driver (`u8g2_st7305`) that this project's
   display driver is based on. ([Repository](https://github.com/waveshareteam/ESP32-S3-RLCD-4.2))
 - **data.gov.hk** — For the KMB and Citybus open ETA APIs that make this project useful.
-- **WenQuanYi (文泉驿)** — For the Bitmap Song font, which provides the CJK glyph data
-  for the custom zh-HK font subsets. ([Project site](http://wenq.org/))
+- **Noto Sans CJK** — For the zh-HK font source (OFL-licensed), which provides the CJK
+  glyph data for the custom font subsets. ([GitHub](https://github.com/notofonts/noto-cjk))
 - **U8g2** — The display graphics library by olikraus that handles all font rendering
   and display communication. ([Repository](https://github.com/olikraus/u8g2))
 - **cJSON** — The lightweight JSON parser used for API response parsing, provided via
