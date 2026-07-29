@@ -26,7 +26,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 
 | Role | Min glyph height | U8g2 weight | Example |
 |---|---|---|---|
-| Header time (HH:MM) | 32 px | Bold | `u8g2_font_logisoso32_tf` |
+| Header time (HH:MM) | 28 px | Bold | `u8g2_font_logisoso28_tf` |
 | Header temperature (NN°C) | 22 px | Bold | `u8g2_font_profont22_mf` |
 | Header label ("HK Bus ETA") | 10 px | Regular | `u8g2_font_helvR10_tr` |
 | Route number | 29 px | Bold | `u8g2_font_profont29_mf` |
@@ -85,7 +85,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 1. **Header band** — Full-width filled black rect, ~36 px high. Three text elements, all white-on-black with ≥12 px left/right padding:
    - **"HK Bus ETA"** left-aligned, regular weight, ~10 px (`u8g2_font_helvR10_tr`).
    - **Temperature (NN°C)** positioned ~16 px right of the title text, bold, 22 px (`u8g2_font_profont22_mf`). Shares the title's baseline (y=24). Omitted entirely when data is unavailable or stale (see §8).
-   - **Current time HH:MM** right-aligned, bold, 32 px (`u8g2_font_logisoso32_tf`).
+   - **Current time HH:MM** right-aligned, bold, 28 px (`u8g2_font_logisoso28_tf`), baseline y=32.
    - No icon, no other label. Temperature must never overlap the time element.
 2. **Route rows** — Column layout with explicit column boundaries:
     - **Col 1** (route number): fixed width ~60 px, left-aligned, bold, vertically centred across the full row height. At least 16 px gap between Col 1 and Col 2.
@@ -151,7 +151,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Text sizes meet the minimums in §2 for their role.
 - [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_24` and `u8g2_font_zhhk_stop_20` are compiled into the firmware.
 - [ ] Header and footer are solid black bands with white inverted text.
-- [ ] Header shows "HK Bus ETA" left-aligned, temperature (NN°C) to the right of the title at 22 px bold, and current time HH:MM right-aligned at 32 px bold. Temperature is omitted entirely when data is unavailable or stale.
+- [ ] Header shows "HK Bus ETA" left-aligned, temperature (NN°C) to the right of the title at 22 px bold, and current time HH:MM right-aligned at 28 px bold. Temperature is omitted entirely when data is unavailable or stale.
 - [ ] Route rows have exactly 1 px horizontal dividers between them — no vertical dividers, no box borders.
 - [ ] Each route row shows exactly 3 ETA values, right-aligned in a fixed-width column group.
 - [ ] The 1st (soonest) ETA value is visually larger/bolder than the 2nd and 3rd values.

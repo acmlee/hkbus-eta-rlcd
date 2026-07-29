@@ -98,7 +98,7 @@ h1 {
 .disp-header .header-left {
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 16px;  /* per design.md §3: ~16px right of the title text */
 }
 .disp-header .header-label {
   font-size: 10px;
@@ -113,10 +113,11 @@ h1 {
   line-height: 1;
 }
 .disp-header .header-time {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: bold;
   letter-spacing: 1px;
   line-height: 1;
+  margin-top: 4px;  /* push down to match firmware y=32 baseline */
 }
 
 /* ── 1px divider between rows ── */
@@ -211,7 +212,7 @@ h1 {
   min-width: 18px;
 }
 .min-suffix {
-  font-size: 9px;
+  font-size: 12px;  /* per design.md §2: u8g2_font_profont12_mf */
   font-weight: normal;
   line-height: 1;
   letter-spacing: 0.5px;
@@ -272,7 +273,7 @@ h1 {
 <body>
 
 <h1>hk-bus-eta-rlcd &middot; design.md &sect;3 Layout</h1>
-<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; header with temp &amp; 32px time &middot; zh-HK CJK text</p>
+<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; header with temp &amp; 28px time &middot; zh-HK CJK text</p>
 
 <div class="viewer">
   <div>

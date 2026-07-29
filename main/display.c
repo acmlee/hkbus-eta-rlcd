@@ -105,7 +105,7 @@ void render_header(const char *time_str, const char *temp_str)
         int x_temp = 14 + w_title + 16;
 
         /* Time left edge (time is right-anchored at DISP_WIDTH - 14) */
-        u8g2_SetFont(u, u8g2_font_logisoso32_tf);
+        u8g2_SetFont(u, u8g2_font_logisoso28_tf);
         int w_time = u8g2_GetStrWidth(u, time_str);
         int x_time_left = DISP_WIDTH - 14 - w_time;
 
@@ -117,10 +117,10 @@ void render_header(const char *time_str, const char *temp_str)
         /* If overlap would occur, skip — temperature omitted for this frame */
     }
 
-    /* HH:MM right, white-on-black, 32px bold */
-    u8g2_SetFont(u, u8g2_font_logisoso32_tf);
+    /* HH:MM right, white-on-black, 28px bold */
+    u8g2_SetFont(u, u8g2_font_logisoso28_tf);
     int tw = u8g2_GetStrWidth(u, time_str);
-    u8g2_DrawStr(u, DISP_WIDTH - 14 - tw, 31, time_str);
+    u8g2_DrawStr(u, DISP_WIDTH - 14 - tw, 32, time_str);
 
     u8g2_SetDrawColor(u, 1);   /* restore black */
 }
