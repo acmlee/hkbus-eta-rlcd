@@ -251,17 +251,17 @@ void render_route_row(int row_index, const char *route_num,
     if (eta1 != (time_t)-1) {
         double secs = difftime(eta1, now);
         m1 = (int)(secs / 60.0);    /* truncate = floor for positive values */
-        if (m1 < 0) m1 = -1;
+        if (m1 <= 0) m1 = -1;       /* past or due-now → "--" */
     }
     if (eta2 != (time_t)-1) {
         double secs = difftime(eta2, now);
         m2 = (int)(secs / 60.0);    /* truncate = floor for positive values */
-        if (m2 < 0) m2 = -1;
+        if (m2 <= 0) m2 = -1;       /* past or due-now → "--" */
     }
     if (eta3 != (time_t)-1) {
         double secs = difftime(eta3, now);
         m3 = (int)(secs / 60.0);    /* truncate = floor for positive values */
-        if (m3 < 0) m3 = -1;
+        if (m3 <= 0) m3 = -1;       /* past or due-now → "--" */
     }
 
     char e1[12], e2[12], e3[12];

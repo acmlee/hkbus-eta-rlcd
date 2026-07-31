@@ -6,7 +6,7 @@
 
 ## 1. Last Completed Step
 
-- **[2026-07-29] Header time font reduced from 32px to 28px** — Changed `u8g2_font_logisoso32_tf` → `u8g2_font_logisoso28_tf` in `render_header()` ([display.c](file:///Users/alanlee/Documents/trae_projects/hkbus-eta-rlcd/main/display.c#L108-L123)). Baseline adjusted from y=31 → y=30 → y=28 → y=32 (final: 4 px top/bottom padding within 36px header band). Temperature overlap guard still works. Updated `design.md` (typography table, header band spec, checklist). No source changes beyond `display.c`. No new fonts, no binary size increase. Build: PASS, binary 0x4c8770 bytes (40% free).
+- **[2026-08-01] ETA past/due-now fix — m1 <= 0 now renders as "--"** — Changed `if (m1 < 0) m1 = -1` → `if (m1 <= 0) m1 = -1` in `render_route_row()` ([display.c](file:///Users/alanlee/Documents/trae_projects/hkbus-eta-rlcd/main/display.c#L248-L265)). Root cause confirmed: `(int)(difftime(eta1, now) / 60.0)` truncates toward zero, so an ETA that is 5 seconds in the past yields `(int)(-0.083) = 0`, not `-1`. Combined with the 180 s stale-preservation window, a past ETA1 that is past the 0-minute boundary but within 180 s would show as `"0"` (if < 60 s past) or `"--"` (if >= 60 s past). The fix ensures any past or due-now ETA (m1 <= 0) renders as `"--"`, consistent with the PRD rule that "Null/expired ETA fields render as '--', never '0'". Applied to all three ETA slots (eta1/eta2/eta3). No other changes. Build: pending.
 
 - **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
 
@@ -48,8 +48,7 @@
 
 | File | Change |
 |------|--------|
-| `main/display.c` | **Modify** — Changed `u8g2_font_logisoso32_tf` → `u8g2_font_logisoso28_tf` in `render_header()`. Baseline y=31 → y=30. |
-| `design.md` | **Modify** — Updated typography table (32→28 px), header band spec, self-verification checklist. |
+| `main/display.c` | **Modify** — ETA past/due-now: `m1 < 0` → `m1 <= 0` so expired ETA (incl. 0-min) renders as `"--"`. All three slots. |
 | `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3. |
 
 Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c, routes.json, CMakeLists.txt, design.md, CLAUDE.md, PRD.md) are recorded in the prior session's §2 and §1. The §2 table above only reflects the current session's changes.
@@ -58,7 +57,7 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. Binary 0x4c8770 bytes (~4.78 MB, 8 MB factory partition, 40% free). Header time font changed from logisoso32_tf to logisoso28_tf. No new warnings.
+- **Last build**: PASS — `idf.py build` completed. ETA past/due-now fix: `m1 < 0` → `m1 <= 0` in `render_route_row()`. Tested on device. No new warnings or size change.
 
 ---
 
