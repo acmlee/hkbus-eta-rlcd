@@ -47,6 +47,11 @@ static const char *TAG = "hkbus";
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
 
+/* Epoch threshold above which the SNTP clock is considered valid
+ * (2023-11-14).  Before this, localtime() returns a 1970-era time.
+ * Shared by ntp_wait_for_sync() and the header date build. */
+#define EPOCH_SYNC_THRESHOLD 1700000000UL
+
 /* Track reconnection attempts for diagnostic logging */
 static int s_reconnect_count = 0;
 
@@ -197,12 +202,12 @@ static void ntp_wait_for_sync(void)
     int retries = 0;
     const int MAX_RETRIES = 10;
     time_t now = 0;
-    while (time(&now) < 1700000000 && retries < MAX_RETRIES) {
+    while (time(&now) < EPOCH_SYNC_THRESHOLD && retries < MAX_RETRIES) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         retries++;
     }
 
-    if (now >= 1700000000) {
+    if (now >= EPOCH_SYNC_THRESHOLD) {
         struct tm *ti = localtime(&now);
         ESP_LOGI(TAG, "Time synced: %02d:%02d:%02d",
                  ti->tm_hour, ti->tm_min, ti->tm_sec);
@@ -384,6 +389,29 @@ static void eta_fetch_task(void *arg)
 }
 
 /* ------------------------------------------------------------------
+ * Header date build — "DD MMM (DDD)" (e.g. " 9 Aug (Sun)").
+ *
+ * Single-digit days render a space in the tens slot (" 9", not "09")
+ * so the ones digit stays at a stable x-position as the date counts
+ * up.  Month/weekday are English abbreviations ("Aug", "Sun") from
+ * the default C locale.  Before the SNTP clock is valid, fill the
+ * buffer with a placeholder instead of a 1970-era date.
+ * ----------------------------------------------------------------*/
+static void build_header_date_str(time_t now, char *buf, size_t len)
+{
+    if (now < (time_t)EPOCH_SYNC_THRESHOLD) {
+        snprintf(buf, len, "-- --- (---)");
+        return;
+    }
+
+    struct tm *ti = localtime(&now);
+    char mdw[16];   /* e.g. "Aug (Sun)" */
+    strftime(mdw, sizeof(mdw), "%b (%a)", ti);
+    snprintf(buf, len, (ti->tm_mday < 10) ? " %d %s" : "%d %s",
+             ti->tm_mday, mdw);
+}
+
+/* ------------------------------------------------------------------
  * display_task — render loop, one task
  *
  * Runs at wall-clock boundaries.  Each tick:
@@ -404,6 +432,7 @@ static void display_task(void *arg)
 {
     char last_updated[32];
     char time_str[6];
+    char date_str[24];
 
     /* Track the last day (tm_yday) a resync was attempted.
      * -1 ensures the first 06:00 after boot always triggers. */
@@ -423,9 +452,10 @@ static void display_task(void *arg)
         time(&now);
         struct tm *ti = localtime(&now);
 
-        /* Build HH:MM header */
+        /* Build HH:MM header + date label */
         snprintf(time_str, sizeof(time_str), "%02d:%02d",
                  ti->tm_hour, ti->tm_min);
+        build_header_date_str(now, date_str, sizeof(date_str));
 
         /* ---- 2. Daily NTP resync at 06:00 ---- */
         /* Trigger once per day at 06:xx.  Uses tm_yday to ensure the
@@ -439,12 +469,13 @@ static void display_task(void *arg)
             ntp_resync();
             last_resync_yday = ti->tm_yday;
 
-            /* Re-read time after resync to update the header string
+            /* Re-read time after resync to update the header strings
              * in case the clock was corrected by more than a minute. */
             time(&now);
             ti = localtime(&now);
             snprintf(time_str, sizeof(time_str), "%02d:%02d",
                      ti->tm_hour, ti->tm_min);
+            build_header_date_str(now, date_str, sizeof(date_str));
         }
 
         /* ---- 3. Snap the active buffer index + page (single atomic reads) ---- */
@@ -501,7 +532,7 @@ static void display_task(void *arg)
         int next_seconds = s_refresh_interval - (sec % s_refresh_interval);
 
         /* ---- 6. Render the dashboard ---- */
-        render_dashboard(time_str, temp_ptr, hum_ptr, last_updated,
+        render_dashboard(date_str, time_str, temp_ptr, hum_ptr, last_updated,
                          battery_pct, page_ptr,
                          s_route_buf[buf_idx][page],
                          s_pages[page].count);

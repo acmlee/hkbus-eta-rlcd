@@ -6,7 +6,8 @@
 
 ## 1. Last Completed Step
 
-- **[2026-08-09] Header humidity (NN%) added beside temperature** — Header band now renders relative humidity from the HKO rhrread API immediately after the temperature (`28°C 70%`), same font (`u8g2_font_profont22_mf`, 22 px bold), same baseline y=24, 12 px gap. One API fetch supplies both fields (`temperature.data[]` + `humidity.data[]`). Per the user-approved plan (`docs/plan-header-humidity.md`): shared 30-min stale TTL; drop order on overlap = humidity first, then temperature, then the whole weather block (time always wins); humidity hides independently (no last-known-good) when the configured station has no humidity entry; no new routes.json key — existing `weather.station` governs both. Struct renamed `weather_temp_t` → `weather_t` with new `humidity_pct`/`humidity_valid` fields; new `weather_get_humidity_str()` in weather_hko.c. Updated CLAUDE.md, design.md, PRD.md, README.md, HANDOFF.md. Build: PASS, binary 0x4c8bd0 bytes (~4.8 MB, 40% free). DISPLAY_TEST path compile-verified clean.
+- **[2026-08-09] Header label "HK Bus ETA" replaced with current date** — The left-aligned header element is now the current date `DD MMM (DDD)` (e.g. ` 9 Aug (Sun)`) instead of the static "HK Bus ETA", in the same font (`u8g2_font_helvR10_tr`, 10 px regular) and position (14, 24). Per the user-approved plan (`docs/plan-header-date.md`): D1 font unchanged; D2 single-digit days keep a space in the tens slot (` 9`, not `09`) so the ones digit stays at a stable x-position; D3 English month/weekday abbreviations via `strftime("%b (%a)")` (no `%e` dependency); D4 pre-sync placeholder `-- --- (---)` using the shared `EPOCH_SYNC_THRESHOLD` constant (1700000000) extracted for both `ntp_wait_for_sync()` and the new `build_header_date_str()` in main.c; D5 no monospace. Weather block remains anchored 16 px right of the date label's measured width. `render_header()`/`render_dashboard()` signatures in display.h/display.c gain a leading `const char *date_str`; DISPLAY_TEST call site updated. Docs updated: design.md (§2/§3/§7), CLAUDE.md (new "Header Date" section + weather wording), HANDOFF.md. PRD.md unchanged (label not specified there); mockups unchanged (already stale). Build: PASS, binary 0x4c9600 bytes (~4.8 MB, 40% app partition free). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on display.c).
+- **[2026-08-09] Header humidity (NN%) added beside temperature** — Header band now renders relative humidity from the HKO rhrread API immediately after the temperature (`28°C 70%`), same font (`u8g2_font_profont22_mf`, 22 px bold), same baseline y=24, 12 px gap. One API fetch supplies both fields (`temperature.data[]` + `humidity.data[]`). Per the user-approved plan (`docs/plan-header-humidity.md`): shared 30-min stale TTL; drop order on overlap = humidity first, then temperature, then the whole weather block (time always wins); humidity hides independently (no last-known-good retention) when the configured station has no humidity entry; no new routes.json key — existing `weather.station` governs both. Struct renamed `weather_temp_t` → `weather_t` with new `humidity_pct`/`humidity_valid` fields; new `weather_get_humidity_str()` in weather_hko.c. Updated CLAUDE.md, design.md, PRD.md, README.md, HANDOFF.md. Build: PASS, binary 0x4c8bd0 bytes (~4.8 MB, 40% free). DISPLAY_TEST path compile-verified clean.
 
 - **[2026-08-01] ETA past/due-now fix — m1 <= 0 now renders as "--"** — Changed `if (m1 < 0) m1 = -1` → `if (m1 <= 0) m1 = -1` in `render_route_row()` ([display.c](file:///Users/alanlee/Documents/trae_projects/hkbus-eta-rlcd/main/display.c#L248-L265)). Root cause confirmed: `(int)(difftime(eta1, now) / 60.0)` truncates toward zero, so an ETA that is 5 seconds in the past yields `(int)(-0.083) = 0`, not `-1`. Combined with the 180 s stale-preservation window, a past ETA1 that is past the 0-minute boundary but within 180 s would show as `"0"` (if < 60 s past) or `"--"` (if >= 60 s past). The fix ensures any past or due-now ETA (m1 <= 0) renders as `"--"`, consistent with the PRD rule that "Null/expired ETA fields render as '--', never '0'". Applied to all three ETA slots (eta1/eta2/eta3). No other changes. Build: pending.
 
@@ -50,25 +51,21 @@
 
 | File | Change |
 |------|--------|
-| `main/weather_hko.h` | **Modify** — `weather_temp_t` → `weather_t`; added `humidity_pct`/`humidity_valid` fields and `weather_get_humidity_str()` declaration. |
-| `main/weather_hko.c` | **Modify** — Parse `humidity.data[]` in `weather_fetch_once()`, write `humidity_pct`/`humidity_valid` under spinlock; added `weather_get_humidity_str()`. |
-| `main/display.h` | **Modify** — `render_header()`/`render_dashboard()` signatures accept `hum_str`. |
-| `main/display.c` | **Modify** — `render_header()` draws humidity after temperature (12 px gap) with overlap drop-order guard; DISPLAY_TEST call site updated. |
-| `main/main.c` | **Modify** — `display_task` builds `hum_str` via `weather_get_humidity_str()` and passes it to `render_dashboard()`. |
-| `docs/plan-header-humidity.md` | **Add** — User-approved implementation plan (decisions D1–D3, A1–A4). |
-| `CLAUDE.md` | **Modify** — "Weather Temperature" → "Weather Temperature & Humidity" (shared TTL, drop order, independent hide, `weather_t` model). |
-| `design.md` | **Modify** — §2 humidity typography row, §3 header rule + ASCII diagram (`28°C` → `28°C 70%`), §7 checklist, §8 retitled "External Data: Weather (Temperature & Humidity)". |
-| `PRD.md` | **Modify** — FR #13 + Tier-1 table #3 updated for temperature + humidity. |
-| `README.md` | **Modify** — Feature bullet + `weather.station` field description updated for temp/humidity. |
+| `docs/plan-header-date.md` | **Add** — User-approved implementation plan (decisions D1–D5). |
+| `main/display.h` | **Modify** — `render_header()`/`render_dashboard()` signatures gain leading `const char *date_str`. |
+| `main/display.c` | **Modify** — `render_header()` draws `date_str` at (14, 24) instead of literal `"HK Bus ETA"`; weather anchor `w_title` measured from `date_str`; DISPLAY_TEST call site passes `" 9 Aug (Sun)"`. |
+| `main/main.c` | **Modify** — Added `EPOCH_SYNC_THRESHOLD` constant (used by `ntp_wait_for_sync()` and the new `build_header_date_str()`); `display_task` builds `date_str` (date or pre-sync placeholder `-- --- (---)`) at top-of-loop and after 06:00 resync, passes it to `render_dashboard()`. |
+| `design.md` | **Modify** — §2 header-date typography row + weight bullet, §3 ASCII diagram + header structural rule + weather anchor wording, §7 header checklist + date/time format checklist. |
+| `CLAUDE.md` | **Modify** — Added "Header Date" section; weather font bullet wording updated ("date label"). |
 | `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3. |
 
-Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c, routes.json, CMakeLists.txt, design.md, CLAUDE.md, PRD.md) are recorded in the prior session's §2 and §1. The §2 table above only reflects the current session's changes.
+Note: This session's previous changes (weather humidity) are recorded in the prior session's §1. The §2 table above only reflects the current session's changes.
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — final ninja build clean; `hk-bus-eta-rlcd.bin` 0x4c8bd0 bytes (~4.8 MB, 40% app partition free). Header humidity feature (temperature + humidity in header band). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on `display.c`). No new warnings in modified files (weather_hko.c, display.c, main.c).
+- **Last build**: PASS — final ninja build clean; `hk-bus-eta-rlcd.bin` 0x4c9600 bytes (5,021,056 bytes, ~4.8 MB, 40% app partition free). Header date feature (label "HK Bus ETA" → `DD MMM (DDD)` date). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on display.c). No new warnings in modified files (display.c, main.c).
 
 ---
 
@@ -86,5 +83,6 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 
 ## 5. Next Step
 
-1. **Test "Connecting..." footer on physical device** — Flash the new firmware and verify the footer shows "Connecting..." when Wi-Fi is disconnected and switches to "Updated HH:MM:SS" on reconnection. Validate spinlock cross-core correctness.
-2. **Continue feature work** — After verification, consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).
+1. **Flash and verify header date on physical device** — Confirm the header shows the current date `DD MMM (DDD)` in English HKT (e.g. ` 9 Aug (Sun)`), single-digit days keep the space in the tens slot, the pre-sync placeholder `-- --- (---)` shows during the first seconds after boot, and the weather block still positions correctly relative to the date label.
+2. **Test "Connecting..." footer on physical device** — Flash the new firmware and verify the footer shows "Connecting..." when Wi-Fi is disconnected and switches to "Updated HH:MM:SS" on reconnection. Validate spinlock cross-core correctness.
+3. **Continue feature work** — After verification, consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).

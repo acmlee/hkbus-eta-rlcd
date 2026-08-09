@@ -224,11 +224,19 @@ history of this feature's lifecycle.
 - ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
 - Refresh interval configured via `routes.json` `refresh_seconds`
 
+## Header Date
+- The left-aligned header element is the **current date**, not a static title: format `DD MMM (DDD)` (e.g. ` 9 Aug (Sun)`) — English month/weekday abbreviations (`Aug`, `Sun`) from the default C locale.
+- **Single-digit days**: a space occupies the tens slot (` 9`, not `09`) so the ones digit stays at a stable x-position as the date increments. Built in `main.c` `build_header_date_str()` (day via `snprintf`, month+weekday via `strftime("%b (%a)")`) — `%e` is not relied upon.
+- **Font**: `u8g2_font_helvR10_tr` (10 px regular), drawn at (14, 24) in `render_header()`.
+- **Pre-sync placeholder**: before the SNTP clock is valid (`now < EPOCH_SYNC_THRESHOLD`, 1700000000 = 2023-11-14), the slot shows `-- --- (---)` instead of a 1970-era date. Same threshold constant used by `ntp_wait_for_sync()`.
+- **Midnight rollover**: automatic — the header re-renders every refresh interval and re-reads `localtime()`.
+- **Weather anchoring**: temperature/humidity are positioned 16 px right of the date label's measured width (`x_temp = 14 + w_date + 16`), so the weather block shifts a few px day-to-day as the date width varies. The time element is right-anchored and never moves.
+
 ## Weather Temperature & Humidity
 - **Source**: HKO rhrread API (`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`) — one fetch supplies both `temperature.data[]` and `humidity.data[]`. `humidity.data` has fewer stations than `temperature.data`; never assume a station present in one is present in the other.
 - **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`) — the same station governs both temperature and humidity (no separate humidity key).
 - **Fetch model**: Piggyback on `eta_fetch_task` (every 20th cycle, ~10 min). Counter starts at 20 so first fetch runs immediately on boot — no 10-min wait for initial weather.
-- **Font**: `u8g2_font_profont22_mf` (22 px bold) for **both** temperature and humidity, same baseline as title (y=24), 16 px gap from title, 12 px gap between temperature and humidity.
+- **Font**: `u8g2_font_profont22_mf` (22 px bold) for **both** temperature and humidity, same baseline as the date label (y=24), 16 px gap from the date label, 12 px gap between temperature and humidity.
 - **Format**: `NN°C` (e.g. `28°C`, `\xC2\xB0` for `°`) then `NN%` (e.g. `70%`) rendered immediately after.
 - **Stale TTL**: 30 minutes (1800 s), shared by both fields. Hidden entirely when stale or unavailable — no placeholder, no `--°C`, no `--%`.
 - **Overlap drop order**: If both fit (`x_temp + w_temp + 12 + w_hum + 8 <= x_time_left`), draw both. Else if temperature alone fits (`x_temp + w_temp + 8 <= x_time_left`), drop humidity and draw temperature only. Else omit the whole weather block for that frame. Time always wins.

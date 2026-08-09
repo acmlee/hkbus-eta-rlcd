@@ -29,7 +29,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 | Header time (HH:MM) | 28 px | Bold | `u8g2_font_logisoso28_tf` |
 | Header temperature (NN°C) | 22 px | Bold | `u8g2_font_profont22_mf` |
 | Header humidity (NN%) | 22 px | Bold | `u8g2_font_profont22_mf` (same as temperature) |
-| Header label ("HK Bus ETA") | 10 px | Regular | `u8g2_font_helvR10_tr` |
+| Header date (DD MMM (DDD)) | 10 px | Regular | `u8g2_font_helvR10_tr` |
 | Route number | 29 px | Bold | `u8g2_font_profont29_mf` |
 | Destination (zh-HK) | 24 px | Bold | `u8g2_font_zhhk_dest_24` (custom Noto Sans CJK HK Bold) |
 | Bus-stop name (zh-HK) | 20 px | Regular | `u8g2_font_zhhk_stop_20` (custom Noto Sans CJK HK Regular) |
@@ -40,7 +40,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 
 ### Weight usage
 - **Bold** for data the user scans first: time, route number, destination name, and the soonest ETA value.
-- **Regular** for the header label ("HK Bus ETA") — it is a static title, not scannable data.
+- **Regular** for the header date label ("DD MMM (DDD)") — a compact supporting datum, not a primary scan target.
 - **Regular** for supporting information: bus-stop name, 2nd/3rd ETA values, footer labels, page indicator.
 - **No italic or oblique.** Bitmap fonts rarely include these, and simulated oblique (shear) looks broken in 1-bit.
 
@@ -65,7 +65,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 ┌──────────────────────────────────────────────────────────┐
 │ HEADER BAND (solid black bg, white text, ~36 px high)          │ ← top ~12%
-│ HK Bus ETA  28°C 70%                      14:32             │
+│  9 Aug (Sun) 28°C 70%                     14:32             │
 ├──────────────────────────────────────────────────────────┤ ← 1px dividing line
 │ 1A 往 尖沙咀碼頭 5 8 14 │
 │ 尖沙咀 廣東道 min │ ← 3 rows,
@@ -84,8 +84,8 @@ Each route row must show **both** the destination (往 — where the bus is goin
 ### Structural rules
 
 1. **Header band** — Full-width filled black rect, ~36 px high. Three text elements, all white-on-black with ≥12 px left/right padding:
-   - **"HK Bus ETA"** left-aligned, regular weight, ~10 px (`u8g2_font_helvR10_tr`).
-   - **Weather — temperature (NN°C) then humidity (NN%)**: positioned ~16 px right of the title text, bold, 22 px (`u8g2_font_profont22_mf`), 12 px gap between the two values. Shares the title's baseline (y=24). Both omitted entirely when data is unavailable or stale (see §8).
+   - **Date "DD MMM (DDD)"** (e.g. ` 9 Aug (Sun)`) left-aligned, regular weight, ~10 px (`u8g2_font_helvR10_tr`). English month/weekday abbreviations (`Aug`, `Sun`). A single-digit day renders a space in the tens slot (` 9`, not `09`) so the ones digit stays at a stable x-position as the date increments. Before the SNTP clock is valid, shows `-- --- (---)`. The date rolls over at midnight automatically — no special handling.
+   - **Weather — temperature (NN°C) then humidity (NN%)**: positioned ~16 px right of the date label, bold, 22 px (`u8g2_font_profont22_mf`), 12 px gap between the two values. Shares the date label's baseline (y=24). Both omitted entirely when data is unavailable or stale (see §8).
    - **Current time HH:MM** right-aligned, bold, 28 px (`u8g2_font_logisoso28_tf`), baseline y=32.
    - No icon, no other label. On horizontal overlap with the time element, drop humidity first, then temperature; time always wins.
 2. **Route rows** — Column layout with explicit column boundaries:
@@ -152,7 +152,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Text sizes meet the minimums in §2 for their role.
 - [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_24` and `u8g2_font_zhhk_stop_20` are compiled into the firmware.
 - [ ] Header and footer are solid black bands with white inverted text.
-- [ ] Header shows "HK Bus ETA" left-aligned, weather (temperature `NN°C` + humidity `NN%` at 22 px bold with a 12 px gap) to the right of the title, and current time HH:MM right-aligned at 28 px bold. Both weather values are omitted entirely when data is unavailable or stale. On overlap, humidity drops first, then temperature.
+- [ ] Header shows the current date `DD MMM (DDD)` (e.g. ` 9 Aug (Sun)`, English abbreviations, single-digit days keep a space in the tens slot, `-- --- (---)` before clock sync) left-aligned at 10 px regular, weather (temperature `NN°C` + humidity `NN%` at 22 px bold with a 12 px gap) to the right of the date label, and current time HH:MM right-aligned at 28 px bold. Both weather values are omitted entirely when data is unavailable or stale. On overlap, humidity drops first, then temperature.
 - [ ] Route rows have exactly 1 px horizontal dividers between them — no vertical dividers, no box borders.
 - [ ] Each route row shows exactly 3 ETA values, right-aligned in a fixed-width column group.
 - [ ] The 1st (soonest) ETA value is visually larger/bolder than the 2nd and 3rd values.
@@ -164,7 +164,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] No icons without accompanying text labels.
 - [ ] Footer shows "Updated HH:MM:SS" (or "Connecting..." if Wi-Fi is not connected), "Battery: XX%" right-aligned, "Page X/Y" indicator (profont12, 10 px after "Updated HH:MM:SS") when multi-page mode is active. Hidden in single-page mode.
 - [ ] Pressing the KEY button (GPIO18) toggles between page 1 and page 2 (if configured). The page indicator updates immediately.
-- [ ] Date/time format: `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
+- [ ] Date/time format: `DD MMM (DDD)` date and `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
 - [ ] The boot flash (500 ms all-pixels-on) is the only transition — no animations elsewhere.
 - [ ] Checkerboard dither (if used) is applied only to the route content area, never to the header or footer bands.
 

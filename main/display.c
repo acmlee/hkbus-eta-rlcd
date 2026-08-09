@@ -81,8 +81,8 @@ void display_init(void)
  * Render helpers
  * ----------------------------------------------------------------*/
 
-void render_header(const char *time_str, const char *temp_str,
-                   const char *hum_str)
+void render_header(const char *date_str, const char *time_str,
+                   const char *temp_str, const char *hum_str)
 {
     u8g2_t *u = u8g2();
 
@@ -90,17 +90,17 @@ void render_header(const char *time_str, const char *temp_str,
     u8g2_SetDrawColor(u, 1);
     u8g2_DrawBox(u, 0, ZONE_HEADER_Y, DISP_WIDTH, ZONE_HEADER_H);
 
-    /* "HK Bus ETA" left, white-on-black */
+    /* Date "DD MMM (DDD)" left, white-on-black */
     u8g2_SetFont(u, u8g2_font_helvR10_tr);
     u8g2_SetDrawColor(u, 0);
-    u8g2_DrawStr(u, 14, 24, "HK Bus ETA");
+    u8g2_DrawStr(u, 14, 24, date_str);
 
-    /* Weather (22px bold), 16px right of title, same baseline:
+    /* Weather (22px bold), 16px right of date label, same baseline:
      * temperature, then humidity 12 px after it. */
     if (temp_str) {
-        /* Measure title width in its own font */
+        /* Measure date label width in its own font */
         u8g2_SetFont(u, u8g2_font_helvR10_tr);
-        int w_title = u8g2_GetStrWidth(u, "HK Bus ETA");
+        int w_title = u8g2_GetStrWidth(u, date_str);
 
         u8g2_SetFont(u, u8g2_font_profont22_mf);
         int w_temp = u8g2_GetUTF8Width(u, temp_str);
@@ -374,8 +374,8 @@ void render_flush(void)
 /* ------------------------------------------------------------------
  * Full dashboard render — always writes full buffer every cycle.
  * ----------------------------------------------------------------*/
-void render_dashboard(const char *time_str, const char *temp_str,
-                      const char *hum_str,
+void render_dashboard(const char *date_str, const char *time_str,
+                      const char *temp_str, const char *hum_str,
                       const char *updated_str, int battery_pct,
                       const char *page_indicator_str,
                       const route_data_t routes[3], int route_count)
@@ -386,7 +386,7 @@ void render_dashboard(const char *time_str, const char *temp_str,
     u8g2_ClearBuffer(u);
 
     /* Draw all content */
-    render_header(time_str, temp_str, hum_str);
+    render_header(date_str, time_str, temp_str, hum_str);
 
     for (int i = 0; i < route_count && i < 3; i++) {
         if (i > 0) {
@@ -428,7 +428,8 @@ void display_test(void)
           .stop_zh  = "將軍澳工業邨",   .eta1 = (time_t)-1, .eta2 = (time_t)-1, .eta3 = (time_t)-1 },
     };
 
-    render_dashboard("14:32", "28°C", "70%", "Updated 14:32:00", 255,
+    render_dashboard(" 9 Aug (Sun)", "14:32", "28°C", "70%",
+                     "Updated 14:32:00", 255,
                      NULL, test_routes, 3);
 
     ESP_LOGI(TAG, "DISPLAY_TEST completed");
