@@ -479,6 +479,14 @@ static void display_task(void *arg)
             temp_ptr = temp_str;
         }
 
+        /* ---- 4b. Get humidity string (same fetch/TTL; hidden if the station
+         * lacks a humidity entry). ---- */
+        char hum_str[8] = {0};
+        const char *hum_ptr = NULL;
+        if (weather_get_humidity_str(hum_str, sizeof(hum_str))) {
+            hum_ptr = hum_str;
+        }
+
         /* ---- 4c. Build page indicator string ---- */
         char page_str[32] = {0};
         const char *page_ptr = NULL;
@@ -493,8 +501,8 @@ static void display_task(void *arg)
         int next_seconds = s_refresh_interval - (sec % s_refresh_interval);
 
         /* ---- 6. Render the dashboard ---- */
-        render_dashboard(time_str, temp_ptr, last_updated, battery_pct,
-                         page_ptr,
+        render_dashboard(time_str, temp_ptr, hum_ptr, last_updated,
+                         battery_pct, page_ptr,
                          s_route_buf[buf_idx][page],
                          s_pages[page].count);
 

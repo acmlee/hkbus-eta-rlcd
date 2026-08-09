@@ -29,7 +29,7 @@ display showing "when's the next bus" without needing to pull out a phone.
   exponential smoothing, and Wi-Fi-idle-window sampling to avoid false readings from TX
   voltage sag. **Not a precision fuel gauge** — uses a generic discharge curve, not
   per-cell calibration.
-- **Temperature display** — Current air temperature from the Hong Kong Observatory (HKO) shown in the header band (e.g. `28°C`), fetched every ~10 min via the HKO rhrread open data API. Station configurable via `routes.json`. Hidden when data is unavailable or stale (>30 min).
+- **Temperature & humidity display** — Current air temperature (`28°C`) and relative humidity (`70%`) from the Hong Kong Observatory (HKO), shown together in the header band, fetched every ~10 min via a single HKO rhrread open data API call. Station configurable via `routes.json`. Hidden when data is unavailable or stale (>30 min).
 - **Decoupled task architecture** — ETA fetching and display rendering run as independent
   FreeRTOS tasks. The display re-renders on wall-clock boundaries (every 15 seconds) and
   never waits for network data. ETAs are shared via a lock-free double buffer.
@@ -211,7 +211,7 @@ Example from the repository:
 | `stop_zh` / `stop_en` | Bus-stop name in Traditional Chinese and English. `stop_zh` is rendered first; `stop_en` is used as fallback if `stop_zh` is absent or empty. |
 | `dest_zh` / `dest_en` | Destination label. `dest_zh` is rendered first. For KMB terminal stops, `dest_en` is also used for direction filtering (case-insensitive matching) to exclude the opposite-direction ETAs returned by the API. |
 | `refresh_seconds` | Display render interval in seconds. Must be a divisor of 60 (e.g. 10, 12, 15, 20, 30) for clean wall-clock boundary alignment. Invalid values are rejected at boot with a warning and clamped to 10 s. The ETA fetch interval is independent (~30 s). |
-| `weather.station` | (Optional) HKO weather station name for temperature display. Default `"Hong Kong Observatory"`. Set to any station name from the HKO rhrread API response. |
+| `weather.station` | (Optional) HKO weather station name for the header temperature and humidity display. Default `"Hong Kong Observatory"`. Set to any station name from the HKO rhrread API response. The same station governs both values. |
 
 To add a second page, append another page object to the `pages` array:
 

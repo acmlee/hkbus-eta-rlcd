@@ -6,6 +6,8 @@
 
 ## 1. Last Completed Step
 
+- **[2026-08-09] Header humidity (NN%) added beside temperature** — Header band now renders relative humidity from the HKO rhrread API immediately after the temperature (`28°C 70%`), same font (`u8g2_font_profont22_mf`, 22 px bold), same baseline y=24, 12 px gap. One API fetch supplies both fields (`temperature.data[]` + `humidity.data[]`). Per the user-approved plan (`docs/plan-header-humidity.md`): shared 30-min stale TTL; drop order on overlap = humidity first, then temperature, then the whole weather block (time always wins); humidity hides independently (no last-known-good) when the configured station has no humidity entry; no new routes.json key — existing `weather.station` governs both. Struct renamed `weather_temp_t` → `weather_t` with new `humidity_pct`/`humidity_valid` fields; new `weather_get_humidity_str()` in weather_hko.c. Updated CLAUDE.md, design.md, PRD.md, README.md, HANDOFF.md. Build: PASS, binary 0x4c8bd0 bytes (~4.8 MB, 40% free). DISPLAY_TEST path compile-verified clean.
+
 - **[2026-08-01] ETA past/due-now fix — m1 <= 0 now renders as "--"** — Changed `if (m1 < 0) m1 = -1` → `if (m1 <= 0) m1 = -1` in `render_route_row()` ([display.c](file:///Users/alanlee/Documents/trae_projects/hkbus-eta-rlcd/main/display.c#L248-L265)). Root cause confirmed: `(int)(difftime(eta1, now) / 60.0)` truncates toward zero, so an ETA that is 5 seconds in the past yields `(int)(-0.083) = 0`, not `-1`. Combined with the 180 s stale-preservation window, a past ETA1 that is past the 0-minute boundary but within 180 s would show as `"0"` (if < 60 s past) or `"--"` (if >= 60 s past). The fix ensures any past or due-now ETA (m1 <= 0) renders as `"--"`, consistent with the PRD rule that "Null/expired ETA fields render as '--', never '0'". Applied to all three ETA slots (eta1/eta2/eta3). No other changes. Build: pending.
 
 - **[2026-07-22] Display refresh interval centralised in routes.json** — The hardcoded `10` in `display_task()` boundary calculation was replaced with `s_refresh_interval`, read once from `route_config_get_refresh_interval()` after `route_config_load()` in `app_main()`. Added validation in `route_config.c`: any `refresh_seconds` value that doesn't divide 60 evenly is rejected with a warning and clamped to the safe default of 10 s. This guarantees clean wall-clock boundary alignment for any valid interval. No other features changed. Build: PASS, binary 0x321650 bytes (~3.21 MB, 22% free). No new warnings.
@@ -48,7 +50,16 @@
 
 | File | Change |
 |------|--------|
-| `main/display.c` | **Modify** — ETA past/due-now: `m1 < 0` → `m1 <= 0` so expired ETA (incl. 0-min) renders as `"--"`. All three slots. |
+| `main/weather_hko.h` | **Modify** — `weather_temp_t` → `weather_t`; added `humidity_pct`/`humidity_valid` fields and `weather_get_humidity_str()` declaration. |
+| `main/weather_hko.c` | **Modify** — Parse `humidity.data[]` in `weather_fetch_once()`, write `humidity_pct`/`humidity_valid` under spinlock; added `weather_get_humidity_str()`. |
+| `main/display.h` | **Modify** — `render_header()`/`render_dashboard()` signatures accept `hum_str`. |
+| `main/display.c` | **Modify** — `render_header()` draws humidity after temperature (12 px gap) with overlap drop-order guard; DISPLAY_TEST call site updated. |
+| `main/main.c` | **Modify** — `display_task` builds `hum_str` via `weather_get_humidity_str()` and passes it to `render_dashboard()`. |
+| `docs/plan-header-humidity.md` | **Add** — User-approved implementation plan (decisions D1–D3, A1–A4). |
+| `CLAUDE.md` | **Modify** — "Weather Temperature" → "Weather Temperature & Humidity" (shared TTL, drop order, independent hide, `weather_t` model). |
+| `design.md` | **Modify** — §2 humidity typography row, §3 header rule + ASCII diagram (`28°C` → `28°C 70%`), §7 checklist, §8 retitled "External Data: Weather (Temperature & Humidity)". |
+| `PRD.md` | **Modify** — FR #13 + Tier-1 table #3 updated for temperature + humidity. |
+| `README.md` | **Modify** — Feature bullet + `weather.station` field description updated for temp/humidity. |
 | `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3. |
 
 Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c, routes.json, CMakeLists.txt, design.md, CLAUDE.md, PRD.md) are recorded in the prior session's §2 and §1. The §2 table above only reflects the current session's changes.
@@ -57,7 +68,7 @@ Note: This session's previous changes (button.h/c, route_config.h/c, display.h/c
 
 ## 3. Build Status
 
-- **Last build**: PASS — `idf.py build` completed. ETA past/due-now fix: `m1 < 0` → `m1 <= 0` in `render_route_row()`. Tested on device. No new warnings or size change.
+- **Last build**: PASS — final ninja build clean; `hk-bus-eta-rlcd.bin` 0x4c8bd0 bytes (~4.8 MB, 40% app partition free). Header humidity feature (temperature + humidity in header band). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on `display.c`). No new warnings in modified files (weather_hko.c, display.c, main.c).
 
 ---
 

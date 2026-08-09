@@ -17,7 +17,7 @@ static const char *TAG = "weather_hko";
 #define WEATHER_TTL_SEC 1800
 
 /* ---- Internal state (spinlock-protected) ---- */
-static weather_temp_t s_weather;
+static weather_t   s_weather;
 static portMUX_TYPE   s_weather_lock = portMUX_INITIALIZER_UNLOCKED;
 static char           s_station[64] = "Hong Kong Observatory";
 
@@ -109,13 +109,75 @@ void weather_fetch_once(void)
     if (!found) {
         ESP_LOGW(TAG, "weather_fetch_once: station '%s' not found in response",
                  s_station);
+    } else {
+        /* ---- Humidity: same rhrread response, same station, same TTL ---- */
+        cJSON *hum = cJSON_GetObjectItem(root, "humidity");
+        cJSON *hum_data = (hum && cJSON_IsObject(hum))
+                              ? cJSON_GetObjectItem(hum, "data")
+                              : NULL;
+        if (hum_data == NULL || !cJSON_IsArray(hum_data)) {
+            ESP_LOGW(TAG, "weather_fetch_once: 'humidity.data' missing or "
+                          "not an array");
+        } else {
+            int hum_found = 0;
+            int hum_size = cJSON_GetArraySize(hum_data);
+            for (int i = 0; i < hum_size; i++) {
+                cJSON *entry = cJSON_GetArrayItem(hum_data, i);
+                if (entry == NULL) continue;
+
+                cJSON *place = cJSON_GetObjectItem(entry, "place");
+                if (place == NULL || !cJSON_IsString(place)) continue;
+
+                if (strcasecmp(place->valuestring, s_station) != 0) continue;
+
+                cJSON *value = cJSON_GetObjectItem(entry, "value");
+                if (value == NULL || !cJSON_IsNumber(value)) {
+                    ESP_LOGW(TAG, "weather_fetch_once: station '%s' has no "
+                                  "numeric humidity value", s_station);
+                    break;
+                }
+
+                cJSON *unit = cJSON_GetObjectItem(entry, "unit");
+                if (unit == NULL || !cJSON_IsString(unit) ||
+                    strcmp(unit->valuestring, "percent") != 0) {
+                    ESP_LOGW(TAG, "weather_fetch_once: station '%s' humidity "
+                                  "unit is not percent", s_station);
+                    break;
+                }
+
+                int hum_pct = (int)(value->valuedouble + 0.5f);
+                if (hum_pct < 0)   hum_pct = 0;
+                if (hum_pct > 100) hum_pct = 100;
+
+                /* Write under spinlock */
+                taskENTER_CRITICAL(&s_weather_lock);
+                s_weather.humidity_pct = hum_pct;
+                s_weather.humidity_valid = true;
+                taskEXIT_CRITICAL(&s_weather_lock);
+
+                ESP_LOGI(TAG, "weather_fetch_once: station='%s' humidity=%d%%",
+                         s_station, hum_pct);
+                hum_found = 1;
+                break;
+            }
+
+            if (!hum_found) {
+                ESP_LOGW(TAG, "weather_fetch_once: station '%s' not found in "
+                              "humidity data", s_station);
+                /* No humidity entry for this station: hide it, do not retain
+                 * last-known-good (design.md §8, plan-header-humidity A1). */
+                taskENTER_CRITICAL(&s_weather_lock);
+                s_weather.humidity_valid = false;
+                taskEXIT_CRITICAL(&s_weather_lock);
+            }
+        }
     }
 
     cJSON_Delete(root);
     free(body);
 }
 
-bool weather_snapshot(weather_temp_t *out)
+bool weather_snapshot(weather_t *out)
 {
     if (out == NULL) return false;
 
@@ -137,7 +199,7 @@ bool weather_get_temp_str(char *buf, size_t len)
 {
     if (buf == NULL || len < 8) return false;
 
-    weather_temp_t snap;
+    weather_t snap;
     if (!weather_snapshot(&snap)) {
         return false;
     }
@@ -147,5 +209,22 @@ bool weather_get_temp_str(char *buf, size_t len)
     if (temp_int > 99)  temp_int = 99;
 
     snprintf(buf, len, "%d\xC2\xB0""C", temp_int);  /* NN°C */
+    return true;
+}
+
+bool weather_get_humidity_str(char *buf, size_t len)
+{
+    if (buf == NULL || len < 8) return false;
+
+    weather_t snap;
+    if (!weather_snapshot(&snap)) {
+        return false;
+    }
+
+    if (!snap.humidity_valid) {
+        return false;
+    }
+
+    snprintf(buf, len, "%d%%", snap.humidity_pct);  /* NN% */
     return true;
 }

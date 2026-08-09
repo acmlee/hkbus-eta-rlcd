@@ -28,6 +28,7 @@ The display has exactly two states per pixel: **on** (ink/black, `#000`) and **o
 |---|---|---|---|
 | Header time (HH:MM) | 28 px | Bold | `u8g2_font_logisoso28_tf` |
 | Header temperature (NN°C) | 22 px | Bold | `u8g2_font_profont22_mf` |
+| Header humidity (NN%) | 22 px | Bold | `u8g2_font_profont22_mf` (same as temperature) |
 | Header label ("HK Bus ETA") | 10 px | Regular | `u8g2_font_helvR10_tr` |
 | Route number | 29 px | Bold | `u8g2_font_profont29_mf` |
 | Destination (zh-HK) | 24 px | Bold | `u8g2_font_zhhk_dest_24` (custom Noto Sans CJK HK Bold) |
@@ -64,7 +65,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 ┌──────────────────────────────────────────────────────────┐
 │ HEADER BAND (solid black bg, white text, ~36 px high)          │ ← top ~12%
-│ HK Bus ETA  28°C                             14:32             │
+│ HK Bus ETA  28°C 70%                      14:32             │
 ├──────────────────────────────────────────────────────────┤ ← 1px dividing line
 │ 1A 往 尖沙咀碼頭 5 8 14 │
 │ 尖沙咀 廣東道 min │ ← 3 rows,
@@ -84,9 +85,9 @@ Each route row must show **both** the destination (往 — where the bus is goin
 
 1. **Header band** — Full-width filled black rect, ~36 px high. Three text elements, all white-on-black with ≥12 px left/right padding:
    - **"HK Bus ETA"** left-aligned, regular weight, ~10 px (`u8g2_font_helvR10_tr`).
-   - **Temperature (NN°C)** positioned ~16 px right of the title text, bold, 22 px (`u8g2_font_profont22_mf`). Shares the title's baseline (y=24). Omitted entirely when data is unavailable or stale (see §8).
+   - **Weather — temperature (NN°C) then humidity (NN%)**: positioned ~16 px right of the title text, bold, 22 px (`u8g2_font_profont22_mf`), 12 px gap between the two values. Shares the title's baseline (y=24). Both omitted entirely when data is unavailable or stale (see §8).
    - **Current time HH:MM** right-aligned, bold, 28 px (`u8g2_font_logisoso28_tf`), baseline y=32.
-   - No icon, no other label. Temperature must never overlap the time element.
+   - No icon, no other label. On horizontal overlap with the time element, drop humidity first, then temperature; time always wins.
 2. **Route rows** — Column layout with explicit column boundaries:
     - **Col 1** (route number): fixed width ~60 px, left-aligned, bold, vertically centred across the full row height. At least 16 px gap between Col 1 and Col 2.
     - **Col 2** (destination + bus-stop, stacked): elastic, fills remaining space up to the ETA column. 16 px left padding from Col 1 boundary.
@@ -151,7 +152,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] Text sizes meet the minimums in §2 for their role.
 - [ ] zh-HK text uses a bitmap font (not system-rendered anti-aliased). Custom fonts `u8g2_font_zhhk_dest_24` and `u8g2_font_zhhk_stop_20` are compiled into the firmware.
 - [ ] Header and footer are solid black bands with white inverted text.
-- [ ] Header shows "HK Bus ETA" left-aligned, temperature (NN°C) to the right of the title at 22 px bold, and current time HH:MM right-aligned at 28 px bold. Temperature is omitted entirely when data is unavailable or stale.
+- [ ] Header shows "HK Bus ETA" left-aligned, weather (temperature `NN°C` + humidity `NN%` at 22 px bold with a 12 px gap) to the right of the title, and current time HH:MM right-aligned at 28 px bold. Both weather values are omitted entirely when data is unavailable or stale. On overlap, humidity drops first, then temperature.
 - [ ] Route rows have exactly 1 px horizontal dividers between them — no vertical dividers, no box borders.
 - [ ] Each route row shows exactly 3 ETA values, right-aligned in a fixed-width column group.
 - [ ] The 1st (soonest) ETA value is visually larger/bolder than the 2nd and 3rd values.
@@ -169,13 +170,15 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 
 ---
 
-## 8. External Data: Temperature
+## 8. External Data: Weather (Temperature & Humidity)
 
-The header temperature element is sourced from the Hong Kong Observatory (HKO) "Current Weather Report" open data API (`rhrread`). It is **not** a bus-ETA data source — it is ambient context.
+The header weather elements (temperature `NN°C` and relative humidity `NN%`) are sourced from the Hong Kong Observatory (HKO) "Current Weather Report" open data API (`rhrread`). They are **not** a bus-ETA data source — they are ambient context.
 
-- **Source**: `https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`
-- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`).
+- **Source**: `https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en` — a single fetch supplies both `temperature.data[]` and `humidity.data[]`. The humidity array has fewer stations than the temperature array.
+- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`). The same station governs both fields.
 - **Fetch cadence**: Every 20th `eta_fetch_task` cycle (~10 min), piggybacked on the existing Wi-Fi-awake window — no separate task.
-- **Stale TTL**: 30 minutes. If the last successful fetch is older than 30 min, temperature is hidden (not shown as stale or placeholder).
-- **Format**: `NN°C` (e.g. `28°C`), 22 px bold, `u8g2_font_profont22_mf`. Omitted entirely when data is unavailable.
-- **Failure behaviour**: Hide. No placeholder, no `--°C`. The header reverts to title + time only.
+- **Stale TTL**: 30 minutes, shared by both fields. If the last successful fetch is older than 30 min, both are hidden (not shown as stale or placeholder).
+- **Format**: `NN°C` (e.g. `28°C`) followed by `NN%` (e.g. `70%`) at a 12 px gap, both 22 px bold, `u8g2_font_profont22_mf`. Omitted entirely when data is unavailable.
+- **Humidity availability**: If the station has no humidity entry (but temperature was found), humidity is hidden while temperature remains visible — the fields are independent.
+- **Overlap drop order**: On horizontal conflict with the time element, humidity drops first, then temperature; if neither fits, the whole weather block is omitted for that frame.
+- **Failure behaviour**: Hide. No placeholder, no `--°C`, no `--%`. The header reverts to title + time only.

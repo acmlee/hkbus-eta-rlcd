@@ -224,17 +224,18 @@ history of this feature's lifecycle.
 - ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
 - Refresh interval configured via `routes.json` `refresh_seconds`
 
-## Weather Temperature
-- **Source**: HKO rhrread API (`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`)
-- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`)
-- **Fetch model**: Piggyback on `eta_fetch_task` (every 20th cycle, ~10 min). Counter starts at 20 so first fetch runs immediately on boot — no 10-min wait for initial temperature.
-- **Font**: `u8g2_font_profont22_mf` (22 px bold), same baseline as title (y=24), 16 px gap from title
-- **Format**: `NN°C` (e.g. `28°C`), using `\xC2\xB0` for `°`
-- **Stale TTL**: 30 minutes (1800 s). Hidden entirely when stale or unavailable — no placeholder, no `--°C`.
-- **Overlap guard**: If `x_temp + w_temp + 8 > x_time_left`, temperature is omitted for that frame.
-- **Data model**: `weather_temp_t` struct with spinlock (mirrors battery.c pattern). Writer: `eta_fetch_task` → `weather_fetch_once()`. Reader: `display_task` → `weather_snapshot()`/`weather_get_temp_str()`.
+## Weather Temperature & Humidity
+- **Source**: HKO rhrread API (`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`) — one fetch supplies both `temperature.data[]` and `humidity.data[]`. `humidity.data` has fewer stations than `temperature.data`; never assume a station present in one is present in the other.
+- **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`) — the same station governs both temperature and humidity (no separate humidity key).
+- **Fetch model**: Piggyback on `eta_fetch_task` (every 20th cycle, ~10 min). Counter starts at 20 so first fetch runs immediately on boot — no 10-min wait for initial weather.
+- **Font**: `u8g2_font_profont22_mf` (22 px bold) for **both** temperature and humidity, same baseline as title (y=24), 16 px gap from title, 12 px gap between temperature and humidity.
+- **Format**: `NN°C` (e.g. `28°C`, `\xC2\xB0` for `°`) then `NN%` (e.g. `70%`) rendered immediately after.
+- **Stale TTL**: 30 minutes (1800 s), shared by both fields. Hidden entirely when stale or unavailable — no placeholder, no `--°C`, no `--%`.
+- **Overlap drop order**: If both fit (`x_temp + w_temp + 12 + w_hum + 8 <= x_time_left`), draw both. Else if temperature alone fits (`x_temp + w_temp + 8 <= x_time_left`), drop humidity and draw temperature only. Else omit the whole weather block for that frame. Time always wins.
+- **Humidity availability**: If the last successful fetch found no humidity entry for the configured station (but temperature was found), humidity hides independently — no last-known-good retention (temperature still shows alone). If temperature is missing, both hide (shared 30-min TTL).
+- **Data model**: `weather_t` struct with spinlock (mirrors battery.c pattern). Fields: `temp_c` (`float`), `humidity_pct` (`int`, 0–100), `humidity_valid` (`bool`), `last_updated_epoch` (`time_t`), `valid` (`bool`). One shared `last_updated_epoch` so the two fields can never diverge. Writer: `eta_fetch_task` → `weather_fetch_once()`. Reader: `display_task` → `weather_snapshot()`/`weather_get_temp_str()`/`weather_get_humidity_str()`.
 - **Files**: `main/weather_hko.c`, `main/weather_hko.h`, `main/http_util.c`, `main/http_util.h`
-- **Failure behaviour**: HTTP error → log warning, preserve last-known-good. JSON parse failure → log warning, preserve last-known-good. Station not found in response → log warning, no update. After 30 min of no successful fetch, temperature disappears from header.
+- **Failure behaviour**: HTTP error → log warning, preserve last-known-good. JSON parse failure → log warning, preserve last-known-good. Station not found in temperature → log warning, no update. Station not found in humidity only → log warning, hide humidity for this update. After 30 min of no successful fetch, both disappear from header.
 - **HKO API response shape differs from KMB/Citybus** — never assume interchangeability.
 
 ## WiFi Connection State
