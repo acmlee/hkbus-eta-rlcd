@@ -8,7 +8,7 @@
 - Data sources: KMB ETA Open API + Citybus ETA Open API (two
   separate response shapes — never assume they're unified)
 - Config format: routes.json via SPIFFS, NOT hardcoded values
-- Time sync: SNTP, Asia/Hong_Kong (HKT, UTC+8)
+- Time sync: SNTP (stdtime.gov.hk) + onboard PCF85063 RTC — RTC restores time at boot, every successful SNTP sync updates the RTC (see §PCF85063 RTC)
 
 ## File & Path Conventions
 - docs/waveshare-pinout.md, docs/ESP32-S3-RLCD-4.2-schematic.pdf,
@@ -223,6 +223,16 @@ history of this feature's lifecycle.
 - Display renders at configurable wall-clock boundaries (read from `routes.json` `refresh_seconds`). Valid values are divisors of 60 (e.g. 10, 12, 15, 20, 30) — any value that does not divide 60 evenly is rejected at boot with a warning and clamped to 10 s.
 - ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
 - Refresh interval configured via `routes.json` `refresh_seconds`
+
+## PCF85063 RTC — Onboard Built-in Clock
+- **Hardware**: PCF85063A RTC on the shared I2C bus — **I2C0, SDA=GPIO13, SCL=GPIO14, 300 kHz, addr 0x51**. Bus is shared with the SHTC3 temp/humidity sensor and audio codec, but this firmware only drives the RTC. Time retention across power-off requires a rechargeable RTC battery in the PH1.0 holder; without it the RTC resets to year 2000 (treated as "never set").
+- **Reuse strategy**: The driver is vendored **verbatim** from the Waveshare reference (`10_FactoryProgram` SensorLib trimmed to the RTC path, plus `port_bsp/i2c_bsp.*` and `i2c_equipment.*`), per the user-approved `docs/plan-rtc-pcf85063.md` (Option A). New component `components/pcf85063_rtc/` (C++ sources). Only deviations: `extern "C"` guards in `i2c_equipment.h`, and `Rtc_Setup` returns `bool` (chip-present detection).
+- **C API** (`components/pcf85063_rtc/include/rtc_pcf85063.h`, implemented in `rtc_wrap.cpp`): `rtc_pcf85063_init()`, `rtc_pcf85063_get_time()`, `rtc_pcf85063_set_time()`, `rtc_pcf85063_store_system_time()`, `rtc_pcf85063_restore_system_time()`. The `rtc_pcf85063_` prefix avoids colliding with `esp_hw_support`'s own `rtc_init()`. All times are **HKT wall time** (HK has no DST); `TZ=HKT-8` must be set before any RTC↔system conversion.
+- **Boot flow** (`main.c`): `rtc_pcf85063_init()` runs just before `time_sync_init()`. Inside `time_sync_init()`, after `setenv("TZ","HKT-8")` but **before** SNTP init, `rtc_pcf85063_restore_system_time()` sets the system clock from the RTC — the header shows the correct date instantly and the clock still works if Wi-Fi/SNTP fails.
+- **Update, not reset**: `sntp_sync_cb` is registered as `cfg.sync_cb` in both `time_sync_init()` and `ntp_resync()`; it calls `rtc_pcf85063_store_system_time()` on every successful SNTP sync — boot sync, periodic syncs, and the daily 06:00 resync. The RTC is never set from a hardcoded value.
+- **Plausibility guards** (in `rtc_wrap.cpp`): stored RTC year must be 2024–2099; restored epoch must be ≥ 1700000000. First boot / dead backup battery → restore is skipped, SNTP sets the clock, and the RTC is written after the first successful sync.
+- **Failure mode**: RTC absent or I2C fault → `Rtc_Setup` returns false → init logs a warning and the firmware stays in pure-SNTP mode, byte-identical to pre-RTC behaviour. Never blocks boot beyond the existing SNTP timeout.
+- **Build note**: the component's `PRIV_REQUIRES` names the logging component `log` — IDF v6 renamed `esp_log` to `log`.
 
 ## Header Date
 - The left-aligned header element is the **current date**, not a static title: format `DD MMM (DDD)` (e.g. ` 9 Aug (Sun)`) — English month/weekday abbreviations (`Aug`, `Sun`) from the default C locale.

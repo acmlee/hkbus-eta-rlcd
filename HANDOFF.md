@@ -6,6 +6,7 @@
 
 ## 1. Last Completed Step
 
+- **[2026-08-10] PCF85063 RTC — built-in clock now "updated", never "reset"** — The onboard PCF85063 RTC (I2C addr 0x51, SDA=GPIO13, SCL=GPIO14, I2C port 0, 300 kHz) is now the persistent wall clock. Per the user-approved plan (`docs/plan-rtc-pcf85063.md`, Option A — reuse official Waveshare source verbatim): new component `components/pcf85063_rtc/` vendors the trimmed SensorLib RTC path (`SensorPCF85063.hpp`, `SensorRTC.h` incl. `hwClockRead/hwClockWrite`, `SensorPlatform.hpp`, platform comm layer, `REG/PCF85063Constants.h`, Kconfig) plus the example's `I2cMasterBus` (`i2c_bsp.*`) and `Rtc_Setup/Rtc_SetTime/Rtc_GetTime` wrapper (`i2c_equipment.*`) byte-for-byte. Only two small adaptations: `extern "C"` guards in `i2c_equipment.h`, and `Rtc_Setup` returns `bool` (chip-present detection). New thin shim `rtc_wrap.cpp` + `include/rtc_pcf85063.h` expose a C API — `rtc_pcf85063_init/get_time/set_time/store_system_time/restore_system_time` — all prefixed `rtc_pcf85063_` to avoid colliding with `esp_hw_support`'s `rtc_init`. Integration in main.c: `rtc_pcf85063_init()` before `time_sync_init()`; `time_sync_init()` restores system time from RTC *before* SNTP (header correct instantly, clock works with Wi-Fi down); new `sntp_sync_cb` (`cfg.sync_cb` in both `time_sync_init()` and `ntp_resync()`) writes every successful sync into the RTC — boot, periodic, and the daily 06:00 resync — so the clock is **updated** from `stdtime.gov.hk`, never reset to a hardcoded value. Plausibility guards: RTC year 2024–2099 and epoch ≥ 1700000000; RTC absent/dead backup battery → warning + pure-SNTP behaviour unchanged. Docs: CLAUDE.md (new "PCF85063 RTC" section), PRD.md (time source items RTC-backed), README.md ("SNTP only" bullet replaced), HANDOFF.md (this entry). Build: PASS, binary 0x4d09a0 bytes (~4.8 MB, 40% app partition free). Flash + on-device verification pending (user will flash).
 - **[2026-08-09] Header label "HK Bus ETA" replaced with current date** — The left-aligned header element is now the current date `DD MMM (DDD)` (e.g. ` 9 Aug (Sun)`) instead of the static "HK Bus ETA", in the same font (`u8g2_font_helvR10_tr`, 10 px regular) and position (14, 24). Per the user-approved plan (`docs/plan-header-date.md`): D1 font unchanged; D2 single-digit days keep a space in the tens slot (` 9`, not `09`) so the ones digit stays at a stable x-position; D3 English month/weekday abbreviations via `strftime("%b (%a)")` (no `%e` dependency); D4 pre-sync placeholder `-- --- (---)` using the shared `EPOCH_SYNC_THRESHOLD` constant (1700000000) extracted for both `ntp_wait_for_sync()` and the new `build_header_date_str()` in main.c; D5 no monospace. Weather block remains anchored 16 px right of the date label's measured width. `render_header()`/`render_dashboard()` signatures in display.h/display.c gain a leading `const char *date_str`; DISPLAY_TEST call site updated. Docs updated: design.md (§2/§3/§7), CLAUDE.md (new "Header Date" section + weather wording), HANDOFF.md. PRD.md unchanged (label not specified there); mockups unchanged (already stale). Build: PASS, binary 0x4c9600 bytes (~4.8 MB, 40% app partition free). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on display.c).
 - **[2026-08-09] Header humidity (NN%) added beside temperature** — Header band now renders relative humidity from the HKO rhrread API immediately after the temperature (`28°C 70%`), same font (`u8g2_font_profont22_mf`, 22 px bold), same baseline y=24, 12 px gap. One API fetch supplies both fields (`temperature.data[]` + `humidity.data[]`). Per the user-approved plan (`docs/plan-header-humidity.md`): shared 30-min stale TTL; drop order on overlap = humidity first, then temperature, then the whole weather block (time always wins); humidity hides independently (no last-known-good retention) when the configured station has no humidity entry; no new routes.json key — existing `weather.station` governs both. Struct renamed `weather_temp_t` → `weather_t` with new `humidity_pct`/`humidity_valid` fields; new `weather_get_humidity_str()` in weather_hko.c. Updated CLAUDE.md, design.md, PRD.md, README.md, HANDOFF.md. Build: PASS, binary 0x4c8bd0 bytes (~4.8 MB, 40% free). DISPLAY_TEST path compile-verified clean.
 
@@ -51,21 +52,24 @@
 
 | File | Change |
 |------|--------|
-| `docs/plan-header-date.md` | **Add** — User-approved implementation plan (decisions D1–D5). |
-| `main/display.h` | **Modify** — `render_header()`/`render_dashboard()` signatures gain leading `const char *date_str`. |
-| `main/display.c` | **Modify** — `render_header()` draws `date_str` at (14, 24) instead of literal `"HK Bus ETA"`; weather anchor `w_title` measured from `date_str`; DISPLAY_TEST call site passes `" 9 Aug (Sun)"`. |
-| `main/main.c` | **Modify** — Added `EPOCH_SYNC_THRESHOLD` constant (used by `ntp_wait_for_sync()` and the new `build_header_date_str()`); `display_task` builds `date_str` (date or pre-sync placeholder `-- --- (---)`) at top-of-loop and after 06:00 resync, passes it to `render_dashboard()`. |
-| `design.md` | **Modify** — §2 header-date typography row + weight bullet, §3 ASCII diagram + header structural rule + weather anchor wording, §7 header checklist + date/time format checklist. |
-| `CLAUDE.md` | **Modify** — Added "Header Date" section; weather font bullet wording updated ("date label"). |
-| `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3. |
+| `docs/plan-rtc-pcf85063.md` | **Add** — User-approved implementation plan (reuse-first, Option A) + §9 decision record. |
+| `components/pcf85063_rtc/` | **Add** — New component: vendored Waveshare SensorLib RTC path + I2C wrapper (25 files, verbatim from `10_FactoryProgram`), `CMakeLists.txt`, `Kconfig`, `include/rtc_pcf85063.h` (C API), `rtc_wrap.cpp` (C bridge shim). |
+| `components/pcf85063_rtc/port/i2c_equipment.h` | **Modify** — `extern "C"` guards; `Rtc_Setup` → `bool`. |
+| `components/pcf85063_rtc/port/i2c_equipment.cpp` | **Modify** — `Rtc_Setup` returns `rtc.begin()` result. |
+| `main/main.c` | **Modify** — `#include "rtc_pcf85063.h"`; new `sntp_sync_cb`; RTC restore in `time_sync_init()` before SNTP; `cfg.sync_cb = sntp_sync_cb` in both `time_sync_init()` and `ntp_resync()`; `rtc_pcf85063_init()` in `app_main`. |
+| `main/CMakeLists.txt` | **Modify** — `REQUIRES` gains `pcf85063_rtc`. |
+| `CLAUDE.md` | **Modify** — New "PCF85063 RTC" section; time-sync stack line updated. |
+| `PRD.md` | **Modify** — Time source / SNTP items now RTC-backed. |
+| `README.md` | **Modify** — "SNTP only" bullet replaced with RTC behaviour; boot sequence updated. |
+| `HANDOFF.md` | **Modify** — This file. Updated §1, §2, §3, §4, §5. |
 
-Note: This session's previous changes (weather humidity) are recorded in the prior session's §1. The §2 table above only reflects the current session's changes.
+Note: This session's previous changes (header date, humidity) are recorded in the prior session's §1. The §2 table above only reflects the current session's changes.
 
 ---
 
 ## 3. Build Status
 
-- **Last build**: PASS — final ninja build clean; `hk-bus-eta-rlcd.bin` 0x4c9600 bytes (5,021,056 bytes, ~4.8 MB, 40% app partition free). Header date feature (label "HK Bus ETA" → `DD MMM (DDD)` date). DISPLAY_TEST path compile-verified clean (`-fsyntax-only -DDISPLAY_TEST=1` on display.c). No new warnings in modified files (display.c, main.c).
+- **Last build**: PASS — final ninja build clean; `hk-bus-eta-rlcd.bin` 0x4d09a0 bytes (~4.8 MB, 40% app partition free). PCF85063 RTC feature (vendored driver component + SNTP↔RTC sync). New component `pcf85063_rtc` compiles as C++ and links against the C main. No new warnings in modified files. Build-machine note: IDF v6.0.2 names the logging component `log` (not `esp_log`) in component REQUIRES; the `driver` compat component is still present.
 
 ---
 
@@ -78,11 +82,12 @@ Note: This session's previous changes (weather humidity) are recorded in the pri
 - **"Connecting..." footer**: IMPLEMENTED — Footer shows "Connecting..." when WiFi is disconnected (boot or runtime), reverts to "Updated HH:MM:SS" on reconnection. Uses spinlock-protected bool for cross-core safety.
 - **Tier 2 (adaptive/night-mode refresh) and Tier 3 (low-battery UX) deferred** — Documented in PRD.md §9 Open/TBC Decisions. Not implemented.
 - **GPIO18 conflict with pending sleep plan** — Page-toggle now owns GPIO18 short-press. The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked (long-press discriminator or different button) when implemented.
+- **RTC on-device verification pending** — Built and compile-verified; user to flash. Expected boot logs: `PCF85063 RTC ready`, `Boot clock restored from RTC (pre-SNTP)` (when RTC valid), and `RTC updated from SNTP` after each successful sync. Time retention across power-off requires a **rechargeable RTC battery** in the PH1.0 holder; without it the RTC resets to year 2000 and the firmware behaves like first boot (SNTP re-sets it on the next sync).
 
 ---
 
 ## 5. Next Step
 
-1. **Flash and verify header date on physical device** — Confirm the header shows the current date `DD MMM (DDD)` in English HKT (e.g. ` 9 Aug (Sun)`), single-digit days keep the space in the tens slot, the pre-sync placeholder `-- --- (---)` shows during the first seconds after boot, and the weather block still positions correctly relative to the date label.
+1. **Flash and verify the RTC feature on the physical device** — Confirm `PCF85063 RTC ready` at boot, header date shows the correct time immediately (before SNTP completes), `RTC updated from SNTP` after each sync, and that power-cycling restores the clock from RTC without Wi-Fi (if a rechargeable RTC battery is fitted). Also verify the RTC-absent path (no chip / dead battery) still boots in pure-SNTP mode.
 2. **Test "Connecting..." footer on physical device** — Flash the new firmware and verify the footer shows "Connecting..." when Wi-Fi is disconnected and switches to "Updated HH:MM:SS" on reconnection. Validate spinlock cross-core correctness.
 3. **Continue feature work** — After verification, consider: Display sleep + button wake (plan exists at `docs/plan-display-sleep-button-wake.md`). **Note**: GPIO18 now claimed by page-toggle — sleep plan must be reworked (long-press discriminator or different button).

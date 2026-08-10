@@ -1,6 +1,8 @@
 # Plan: PCF85063 RTC — "update, not reset" the built-in clock
 
-Status: Draft — approved for planning only, no code written yet.
+Status: **Implemented 2026-08-10** — build PASS (0x4d09a0, ~4.8 MB, 40% app
+partition free), flash + on-device verification pending. Implementation
+notes (including two build failures and their fixes) in §10.
 
 ## 1. Goal
 
@@ -91,10 +93,13 @@ Dependency map (verified by reading the include chain):
 Not needed (excluded): `SensorRtcHelper.*` (requires PCF8563, unused),
 `SensorCommEnhanced.hpp`, touch/bosch/gauge files, Arduino platform files.
 
-### 2.2 The only modified reused file
+### 2.2 The only modified reused files
 
-`port/i2c_equipment.h` gets **`extern "C"` guards** so its three functions
-link against C callers. Everything else in it stays identical.
+- `port/i2c_equipment.h` gets **`extern "C"` guards** so its three functions
+  link against C callers. Everything else in it stays identical.
+- `port/i2c_equipment.cpp` — `Rtc_Setup` now **returns `bool`** (the result of
+  `rtc.begin()`) so the shim can detect a missing/dead chip and degrade
+  gracefully. Deviation is documented in the file itself and in HANDOFF.md.
 
 ## 3. New code (thin layer only)
 
@@ -239,3 +244,47 @@ upstream so future fixes merge cleanly.
 understood from runtime logs, the vendored driver could be replaced by a
 hand-written C driver at low risk — but that stays an optional refactor,
 not part of this plan.
+
+## 10. Implementation notes — build failures encountered and their fixes
+
+Recorded 2026-08-10 during implementation. Both failures were caught by the
+first clean build and are now reflected in the code (§3) and CLAUDE.md.
+
+**Failure 1 — CMake configure: unknown component `esp_log`.**
+```
+CMake Error at .../build.cmake:380 (message):
+  Failed to resolve component 'esp_log' required by component 'pcf85063_rtc':
+  unknown name.
+```
+- **Root cause**: the new component's `PRIV_REQUIRES` listed `esp_log`,
+  which is the ESP-IDF ≤ v5 component name. The build machine runs
+  **ESP-IDF v6.0.2** (`~/.espressif/v6.0.2/esp-idf`), where the logging
+  component was renamed to **`log`** (header `esp_log.h` unchanged — only
+  the CMake component name differs).
+- **Fix**: `PRIV_REQUIRES ... esp_log ...` → `... log ...` in
+  `components/pcf85063_rtc/CMakeLists.txt`.
+- **Lesson**: a new component's `REQUIRES`/`PRIV_REQUIRES` names must match
+  the installed IDF version's component names; on IDF v6, `log` not
+  `esp_log`. (`driver` as a compat umbrella still exists on v6.)
+
+**Failure 2 — link: `multiple definition of 'rtc_init'`.**
+```
+ld: esp-idf/pcf85063_rtc/libpcf85063_rtc.a(rtc_wrap.cpp.obj): in function `rtc_init':
+rtc_wrap.cpp:39: multiple definition of `rtc_init';
+  esp-idf/esp_hw_support/libesp_hw_support.a(rtc_init.c.obj): ... first defined here
+```
+- **Root cause**: the shim's C API function was named `rtc_init()`, which
+  collides with ESP-IDF's own `rtc_init()` in `esp_hw_support`
+  (`components/esp_hw_support/port/esp32s3/rtc_init.c`) — the chip-level RTC
+  init, unrelated to the PCF85063. The RTC path compiled fine (C++ objects
+  built); the collision surfaced only at link time.
+- **Fix**: renamed the entire public API to the `rtc_pcf85063_` prefix
+  (`rtc_pcf85063_init/get_time/set_time/store_system_time/restore_system_time`)
+  in `rtc_pcf85063.h`, `rtc_wrap.cpp`, and the `main.c` call sites.
+- **Lesson**: never use bare `rtc_*` symbol names in an ESP-IDF project —
+  `esp_hw_support` owns that namespace. Prefix with the chip/feature name.
+
+**Result after both fixes**: build PASS — `hk-bus-eta-rlcd.bin` 0x4d09a0
+bytes (~4.8 MB, 40% app partition free), no new warnings.
+`CONFIG_SENSORLIB_ESP_IDF_NEW_API=y` confirmed in sdkconfig (new I2C driver
+path active, matching the reference build).

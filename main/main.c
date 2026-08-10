@@ -39,6 +39,7 @@
 #include "battery.h"
 #include "weather_hko.h"
 #include "button.h"
+#include "rtc_pcf85063.h"
 /* cJSON parsing is internal to eta_fetcher.c */
 
 static const char *TAG = "hkbus";
@@ -216,18 +217,40 @@ static void ntp_wait_for_sync(void)
     }
 }
 
+/* SNTP sync callback — invoked by the SNTP task on every successful
+ * time sync (boot sync, periodic sync, and the daily 06:00 resync).
+ * Pushes the freshly-synced stdtime.gov.hk time into the PCF85063 RTC,
+ * which is how the built-in clock is kept accurate across power cycles. */
+static void sntp_sync_cb(struct timeval *tv)
+{
+    (void)tv;
+    rtc_pcf85063_store_system_time();
+}
+
 static void time_sync_init(void)
 {
     /* 1. Set timezone BEFORE SNTP so timestamps are interpreted in HKT */
     setenv("TZ", "HKT-8", 1);
     tzset();
 
-    /* 2. Configure SNTP */
+    /* 2. Restore wall clock from the onboard PCF85063 RTC so the header
+     * shows the correct time immediately — no `-- --- (---)` wait, and
+     * the clock still works if Wi-Fi/SNTP is unavailable. Skipped on
+     * first boot / dead backup battery (implausible RTC date). */
+    if (rtc_pcf85063_restore_system_time()) {
+        ESP_LOGI(TAG, "Boot clock restored from RTC (pre-SNTP)");
+    }
+
+    /* 3. Configure SNTP. sync_cb pushes every successful sync into the
+     * RTC — boot sync, periodic syncs, and the daily 06:00 resync —
+     * which is how the built-in clock is *updated* (never "reset" to a
+     * hardcoded value). */
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("stdtime.gov.hk");
-    cfg.sync_cb = NULL;
+    cfg.sync_cb = sntp_sync_cb;
     ESP_ERROR_CHECK(esp_netif_sntp_init(&cfg));
 
-    /* 3. Block until time > 1700000000 (Jan 2024) or 10 s timeout */
+    /* 4. Block until time > 1700000000 (Jan 2024) or 10 s timeout.
+     * With a valid RTC this returns immediately. */
     ntp_wait_for_sync();
 }
 
@@ -252,7 +275,7 @@ static void ntp_resync(void)
     esp_netif_sntp_deinit();
 
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("stdtime.gov.hk");
-    cfg.sync_cb = NULL;
+    cfg.sync_cb = sntp_sync_cb;
     esp_err_t err = esp_netif_sntp_init(&cfg);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "NTP resync: esp_netif_sntp_init failed (0x%x), skipping", err);
@@ -600,7 +623,13 @@ void app_main(void)
     /* ---- Init Wi-Fi (blocking, up to 5 retries) ---- */
     wifi_init_sta(CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
 
-    /* ---- Init SNTP (blocking, up to 10 s) ---- */
+    /* ---- Init onboard PCF85063 RTC (I2C0, SDA=13 SCL=14). If the
+     * chip is absent it logs a warning and the firmware stays in
+     * pure-SNTP mode — identical behaviour to before. ---- */
+    rtc_pcf85063_init();
+
+    /* ---- Init SNTP (blocking up to 10 s; returns immediately when
+     * the RTC already restored a valid clock). ---- */
     time_sync_init();
 
     /* ---- Load page config from SPIFFS ---- */
