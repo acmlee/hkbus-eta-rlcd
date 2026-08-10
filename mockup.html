@@ -84,7 +84,10 @@ h1 {
   background: #fff;
 }
 
-/* ── Header band (design.md §3 rule 1) ── */
+/* ── Header band (design.md §3 rule 1) ──
+   date "DD MMM (DDD)" 10px regular (single-digit day keeps a space
+   in the tens slot); weather 22px bold 16px right of the date label,
+   humidity 12px after temperature; time right-anchored 28px bold */
 .disp-header {
   background: #000;
   color: #fff;
@@ -98,15 +101,21 @@ h1 {
 .disp-header .header-left {
   display: flex;
   align-items: baseline;
-  gap: 16px;  /* per design.md §3: ~16px right of the title text */
+  gap: 16px;  /* per design.md §3: ~16px right of the date label */
 }
-.disp-header .header-label {
+.disp-header .header-date {
   font-size: 10px;
   font-weight: normal;
   letter-spacing: 0.5px;
   line-height: 1;
 }
-.disp-header .header-temp {
+.disp-header .header-weather {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;  /* per design.md §3: 12 px gap between temp and humidity */
+}
+.disp-header .header-temp,
+.disp-header .header-hum {
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.5px;
@@ -273,7 +282,7 @@ h1 {
 <body>
 
 <h1>hk-bus-eta-rlcd &middot; design.md &sect;3 Layout</h1>
-<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; header with temp &amp; 28px time &middot; zh-HK CJK text</p>
+<p class="subtitle">400&thinsp;&times;&thinsp;300&thinsp;px &middot; 1-bit monochrome &middot; ST7305 &middot; 3 routes &middot; header with date + temp &amp; humidity + 28px time &middot; zh-HK CJK text</p>
 
 <div class="viewer">
   <div>
@@ -298,8 +307,10 @@ h1 {
 const dataSets = {
   1: {
     label: '3 routes, 1 with "--" (matches routes.json)',
+    date: ' 9 Aug (Sun)',
     time: '14:32',
     temp: '28°C',
+    hum: '70%',
     updated: '14:32:00',
     battery: 72,
     routes: [
@@ -310,8 +321,10 @@ const dataSets = {
   },
   2: {
     label: 'font-shrink stress test (long zh-HK strings)',
+    date: '30 Sep (Wed)',
     time: '15:07',
     temp: '31°C',
+    hum: '85%',
     updated: '15:07:22',
     battery: 100,
     routes: [
@@ -322,8 +335,10 @@ const dataSets = {
   },
   3: {
     label: 'all live ETAs, 1-digit battery (pad test)',
+    date: ' 1 Oct (Thu)',
     time: '18:45',
     temp: '26°C',
+    hum: '90%',
     updated: '18:45:10',
     battery: 9,
     routes: [
@@ -338,9 +353,12 @@ function buildMockup(d) {
   var html = '';
   html += '<div class="disp-header">';
   html += '<div class="header-left">';
-  html += '<span class="header-label">HK Bus ETA</span>';
-  if (d.temp) {
-    html += '<span class="header-temp">' + d.temp + '</span>';
+  html += '<span class="header-date">' + d.date + '</span>';
+  if (d.temp || d.hum) {
+    html += '<div class="header-weather">';
+    if (d.temp) html += '<span class="header-temp">' + d.temp + '</span>';
+    if (d.hum) html += '<span class="header-hum">' + d.hum + '</span>';
+    html += '</div>';
   }
   html += '</div>';
   html += '<span class="header-time">' + d.time + '</span>';
