@@ -288,3 +288,96 @@ rtc_wrap.cpp:39: multiple definition of `rtc_init';
 bytes (~4.8 MB, 40% app partition free), no new warnings.
 `CONFIG_SENSORLIB_ESP_IDF_NEW_API=y` confirmed in sdkconfig (new I2C driver
 path active, matching the reference build).
+
+## 11. Addendum — clock-trust gate (hide date/time/ETAs until first SNTP sync)
+
+Status: **Implemented 2026-08-10** — build PASS (`hk-bus-eta-rlcd.bin`
+0x4d0b40, ~4.8 MB, 40% app partition free), flash + on-device verification
+pending. User decisions recorded in §11.5; one implementation deviation in
+§11.5 D4.
+
+### 11.1 Goal and rule
+
+On boot, if the RTC's stored year is **< 2026**, assume the clock is
+severely unsynced and **do not show** the header date, the header time, or
+the ETA values until the **first successful SNTP sync**.
+
+Trust rule — the system clock is "trusted" iff:
+- an RTC was restored at boot **and** its stored year ≥ 2026, **or**
+- the first successful SNTP sync has fired (runtime event).
+
+This replaces the current behaviour where the restore gate is
+`RTC_MIN_VALID_YEAR = 2024`, so a 2024/2025 RTC value would be applied and
+the header would immediately show a plausible-but-unsynced time. The rule
+also covers the no-RTC / first-boot / dead-backup-battery cases (year 2000):
+they are treated the same as year < 2026.
+
+### 11.2 Changes (when implemented)
+
+**`components/pcf85063_rtc/rtc_wrap.cpp` — raise the restore gate.**
+- Keep `RTC_MIN_VALID_YEAR 2024` as the *plausibility* floor inside
+  `rtc_pcf85063_get_time()`.
+- Add `RTC_MIN_TRUSTED_YEAR 2026`; `rtc_pcf85063_restore_system_time()`
+  returns false and does **not** `settimeofday()` when the stored year
+  < 2026. The system clock then stays at epoch-0, and the existing
+  `EPOCH_SYNC_THRESHOLD` logic in `build_header_date_str()` already
+  renders `-- --- (---)` — the date hides for free.
+
+**`main/main.c` — trusted flag and gates.**
+- Add `static volatile bool s_clock_trusted = false;` (word-sized volatile,
+  same cross-core-safe pattern as `s_active_buf_idx`/`s_active_page`).
+- Set it `true` in exactly two places:
+  1. `time_sync_init()`: when `rtc_pcf85063_restore_system_time()` returns
+     true (i.e. RTC year ≥ 2026).
+  2. `sntp_sync_cb`: on every successful sync (idempotent), then
+     `xTaskNotifyGive` to `eta_fetch_task` so the first ETA fetch starts
+     immediately rather than waiting for the next 30 s boundary.
+     *(Deviation in implementation: no notification is sent — the fetch
+     task polls `s_clock_trusted` every 500 ms, so the first fetch starts
+     ≤ 500 ms after sync, and a stale notification value cannot leak into
+     the task's 30 s `xTaskNotifyWait`. See D4.)*
+- `display_task`: if `!s_clock_trusted` →
+  - header time string becomes `----` (today it would show `08:00`, the
+    epoch-0 time in HKT),
+  - header date string stays `-- --- (---)`,
+  - footer: **`Updated HH:MM:SS` is suppressed** — the footer shows
+    `Connecting...` until trusted, regardless of Wi-Fi state (decision D1).
+- `eta_fetch_task`: at the top of each cycle, if `!s_clock_trusted` → skip
+  the fetch body (no HTTP, no buffer flip, no battery/weather sampling).
+  The buffers stay at the `(time_t)-1` sentinels, so `render_route_row()`
+  already draws `--` for all three ETA slots. **No display.c/display.h
+  changes are needed.**
+
+### 11.3 Behaviour matrix
+
+| Case | Before first SNTP sync | After first SNTP sync |
+|---|---|---|
+| RTC year ≥ 2026 at boot | Trusted immediately — date/time/ETA + footer shown as today | Normal |
+| RTC year < 2026 (or first boot / dead battery / no RTC) | Time `----`, date `-- --- (---)`, ETAs `--`, footer `Connecting...` | Everything appears; RTC written from stdtime.gov.hk |
+| SNTP never succeeds | Stays hidden (per requirement) | — |
+
+### 11.4 Files touched and docs to update (when implemented)
+
+- Code: `main/main.c`, `components/pcf85063_rtc/rtc_wrap.cpp`.
+- Docs: CLAUDE.md (§PCF85063 RTC + §Header Date), PRD.md (FR 3, FR 12,
+  SNTP-failure + time-source rows), README.md (first-boot sequence +
+  limitations), HANDOFF.md.
+
+### 11.5 User decisions (recorded 2026-08-10)
+
+- **D1 — Footer gating: include.** While untrusted, the footer shows
+  `Connecting...` instead of `Updated HH:MM:SS` (which would otherwise
+  render `Updated 08:00:00` from the epoch-0 clock).
+- **D2 — Weather/battery deferral: confirmed.** The weather (HKO) and
+  battery-sampling piggybacks ride the `eta_fetch_task` cycle and are
+  deferred until the clock is trusted (battery shows `--%`, weather
+  hidden). Acceptable — the clock is the gating constraint.
+- **D3 — Plan location: this document.** This addendum is part of
+  `docs/plan-rtc-pcf85063.md` rather than a separate plan file.
+- **D4 — Implementation deviation: poll instead of notify (2026-08-10).**
+  The plan's `xTaskNotifyGive` from `sntp_sync_cb` was replaced by a
+  500 ms poll of `s_clock_trusted` inside `eta_fetch_task`'s gate. The
+  task's 30 s wait uses `xTaskNotifyWait(0, 0, NULL, ...)` which does not
+  clear the notification value; a stale value from the sync callback
+  would otherwise make subsequent waits return immediately. Polling
+  keeps first-fetch latency ≤ 500 ms with no notification side effects.

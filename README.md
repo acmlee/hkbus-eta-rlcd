@@ -43,7 +43,9 @@ display showing "when's the next bus" without needing to pull out a phone.
   (requires a rechargeable RTC backup battery). Time is restored from the RTC at boot so
   the header shows the correct time instantly, and every successful SNTP sync — boot,
   periodic, and the daily 06:00 resync — updates the RTC from `stdtime.gov.hk`. If the
-  RTC is absent or its battery is dead, the firmware falls back to SNTP-only.
+  RTC is absent or its battery is dead, the firmware falls back to SNTP-only. If the RTC
+  is older than 2026 (severely unsynced), the date/time, footer timestamp, and ETAs stay
+  hidden (`----`, `-- --- (---)`, `--`) until the first SNTP sync succeeds.
 - **No cloud dependency** — Once configured, the device operates independently on your
   local Wi-Fi network. No app, no account, no subscription.
 
@@ -115,14 +117,16 @@ idf.py -p PORT monitor
 On first power-on, the display will show a full-black test pattern for 500 ms, then
 transition to the dashboard. The device will:
 1. Connect to Wi-Fi (up to 5 retries at boot)
-2. Initialise the onboard PCF85063 RTC and restore the wall clock from it (when valid)
+2. Initialise the onboard PCF85063 RTC and restore the wall clock from it when valid and
+   its year is ≥ 2026 (otherwise the clock stays hidden until the first NTP sync)
 3. Synchronise time via NTP (stdtime.gov.hk, HKT UTC+8) — updates the RTC on success
 4. Load route configuration from SPIFFS (`routes.json`)
 5. Begin the ETA fetch and render cycle
 
-If Wi-Fi or SNTP is slow, the dashboard will show partial state (e.g. "----" for the
-clock — or the correct time if the RTC was valid) within 10 seconds rather than staying
-blank.
+If Wi-Fi or SNTP is slow, the dashboard will show partial state within 10 seconds rather
+than staying blank — with a trusted RTC that means the correct time; without one, the
+header time/date render `----` / `-- --- (---)` and ETAs show `--` until the first
+successful sync.
 
 ---
 
@@ -312,7 +316,9 @@ This section is honest about what the project **does not do**. For the full list
 - **RTC needs a backup battery for power-off retention** — The onboard PCF85063 RTC
   keeps time while the board is unpowered only if a rechargeable RTC battery is fitted
   in the PH1.0 holder. Without it, the clock resets on each power-off and is re-set by
-  the next SNTP sync (SNTP remains the authoritative time source).
+  the next SNTP sync (SNTP remains the authoritative time source). A clock-trust gate
+  also hides date/time/ETAs until the first SNTP sync whenever the RTC year is below
+  2026.
 - **Memory** — Must operate without relying on PSRAM. PSRAM is available (8 MB) but the
   core display and ETA pipeline function with internal SRAM only.
 

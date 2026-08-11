@@ -35,6 +35,14 @@ static bool s_rtc_ready = false;
  * RTC was never set (first boot) or the backup battery failed. */
 #define RTC_MIN_VALID_YEAR  2024
 
+/* Trust gate (docs/plan-rtc-pcf85063.md §11): an RTC year below this is
+ * presumed severely unsynced (never recently synced, years of power-off,
+ * or dead backup battery) and is NOT applied to the system clock. The
+ * clock stays hidden (date/time/ETAs) until the first successful SNTP
+ * sync. Distinct from RTC_MIN_VALID_YEAR, which is only a plausibility
+ * floor for reads. */
+#define RTC_MIN_TRUSTED_YEAR 2026
+
 extern "C" bool rtc_pcf85063_init(void)
 {
     if (s_rtc_ready) {
@@ -114,6 +122,15 @@ extern "C" bool rtc_pcf85063_restore_system_time(void)
     }
     struct tm t;
     if (!rtc_pcf85063_get_time(&t)) {
+        return false;
+    }
+    /* Trust gate (plan-rtc-pcf85063.md §11): a year below
+     * RTC_MIN_TRUSTED_YEAR means the RTC was never synced recently.
+     * Do not apply it — the clock stays untrusted (date/time/ETAs
+     * hidden) until the first successful SNTP sync. */
+    if ((t.tm_year + 1900) < RTC_MIN_TRUSTED_YEAR) {
+        ESP_LOGW(TAG, "RTC year %d < %d — clock not trusted, hiding until first SNTP sync",
+                 t.tm_year + 1900, RTC_MIN_TRUSTED_YEAR);
         return false;
     }
     /* mktime() interprets the tm as HKT wall time (TZ is already set). */

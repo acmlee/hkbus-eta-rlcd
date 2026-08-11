@@ -62,6 +62,14 @@ static int s_reconnect_count = 0;
 static portMUX_TYPE s_wifi_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool         s_wifi_connected = false;
 
+/* Clock trust gate (docs/plan-rtc-pcf85063.md §11).  True when the
+ * system clock is trusted: an RTC with year >= 2026 was restored at
+ * boot, or the first successful SNTP sync has fired.  Until true, the
+ * header date/time, the footer "Updated" timestamp, and the ETA display
+ * are suppressed (and eta_fetch_task does not fetch).  Word-sized
+ * volatile — atomic on ESP32-S3, mirrors the s_active_page pattern. */
+static volatile bool s_clock_trusted = false;
+
 /* ------------------------------------------------------------------
  * Double-buffered shared ETA data (per-page)
  *
@@ -220,10 +228,14 @@ static void ntp_wait_for_sync(void)
 /* SNTP sync callback — invoked by the SNTP task on every successful
  * time sync (boot sync, periodic sync, and the daily 06:00 resync).
  * Pushes the freshly-synced stdtime.gov.hk time into the PCF85063 RTC,
- * which is how the built-in clock is kept accurate across power cycles. */
+ * which is how the built-in clock is kept accurate across power cycles.
+ * Also flips the clock-trust gate: from this moment the header
+ * date/time and ETAs are shown (eta_fetch_task picks it up within
+ * 500 ms — no explicit notification needed). */
 static void sntp_sync_cb(struct timeval *tv)
 {
     (void)tv;
+    s_clock_trusted = true;
     rtc_pcf85063_store_system_time();
 }
 
@@ -235,10 +247,15 @@ static void time_sync_init(void)
 
     /* 2. Restore wall clock from the onboard PCF85063 RTC so the header
      * shows the correct time immediately — no `-- --- (---)` wait, and
-     * the clock still works if Wi-Fi/SNTP is unavailable. Skipped on
-     * first boot / dead backup battery (implausible RTC date). */
+     * the clock still works if Wi-Fi/SNTP is unavailable.  Only an RTC
+     * with year >= 2026 is trusted (plan-rtc-pcf85063.md §11): a lower
+     * year means the clock is presumed severely unsynced and stays
+     * hidden (date/time/ETAs) until the first successful SNTP sync. */
     if (rtc_pcf85063_restore_system_time()) {
         ESP_LOGI(TAG, "Boot clock restored from RTC (pre-SNTP)");
+        s_clock_trusted = true;
+    } else {
+        ESP_LOGI(TAG, "Clock untrusted at boot — date/time/ETAs hidden until first SNTP sync");
     }
 
     /* 3. Configure SNTP. sync_cb pushes every successful sync into the
@@ -327,6 +344,18 @@ static void eta_fetch_task(void *arg)
     while (1) {
         int page = s_active_page;   /* snapshot once per cycle */
         ESP_LOGD(TAG, "Fetch cycle start (page %d)", page + 1);
+
+        /* Clock-trust gate (plan-rtc-pcf85063.md §11): while the clock
+         * is untrusted (no RTC year >= 2026, no SNTP sync yet), do not
+         * fetch — ETA epochs are meaningless against a 1970-era clock
+         * and the display must stay "--".  Poll every 500 ms; the first
+         * successful SNTP sync flips s_clock_trusted in sntp_sync_cb.
+         * Battery/weather piggybacks are deferred with the fetch (user
+         * decision D2). */
+        if (!s_clock_trusted) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
 
         /* Disable modem-sleep so HTTP requests are not delayed by
          * radio power-state transitions. */
@@ -480,6 +509,14 @@ static void display_task(void *arg)
                  ti->tm_hour, ti->tm_min);
         build_header_date_str(now, date_str, sizeof(date_str));
 
+        /* Clock-trust gate: hide the header date/time until the clock is
+         * trusted (RTC year >= 2026 or first SNTP sync).  Pre-sync the
+         * epoch is 1970, which would render "08:00" and a 1970 date. */
+        if (!s_clock_trusted) {
+            snprintf(time_str, sizeof(time_str), "----");
+            snprintf(date_str, sizeof(date_str), "-- --- (---)");
+        }
+
         /* ---- 2. Daily NTP resync at 06:00 ---- */
         /* Trigger once per day at 06:xx.  Uses tm_yday to ensure the
          * resync fires exactly once, not every tick during the
@@ -509,7 +546,10 @@ static void display_task(void *arg)
         taskENTER_CRITICAL(&s_wifi_lock);
         bool wifi_ok = s_wifi_connected;
         taskEXIT_CRITICAL(&s_wifi_lock);
-        if (wifi_ok) {
+        /* Clock-trust gate: the "Updated HH:MM:SS" timestamp is also
+         * suppressed while untrusted — the footer reads "Connecting..."
+         * even when Wi-Fi is up, since no valid time exists yet. */
+        if (wifi_ok && s_clock_trusted) {
             time(&now);
             ti = localtime(&now);
             snprintf(last_updated, sizeof(last_updated),
