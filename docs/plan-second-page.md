@@ -1,8 +1,15 @@
 # Plan: Second Page of Bus ETA Display (Page Toggle via KEY Button)
 
-**Status**: Pending
+**Status**: **Implemented 2026-07-26** — build PASS, on-device verified.
 **Created**: 2026-07-26
-**Tracking**: PRD.md §10 Open/TBC Decisions (new entry)
+**Tracking**: PRD.md §10 Open/TBC Decisions #6
+
+> **Superseded in part (2026-08-16)** — The fetch strategy below ("fetch only the
+> visible page" + page-toggle `xTaskNotifyGive` early-wake) was **replaced** by
+> fetch-all-pages: `eta_fetch_task` now fetches **every route every cycle** and the
+> page-toggle no longer wakes the fetch task (decision D9 of `docs/plan-fetch-all-oos.md`).
+> Sections marked **[SUPERSEDED]** below describe the original design and are retained
+> as historical record only — the current behaviour is in CLAUDE.md §Multi-Page Display.
 
 ---
 
@@ -10,8 +17,10 @@
 
 The dashboard currently shows exactly 3 routes on a single page. This plan adds a
 **second page** with up to 3 more routes, toggled manually via the on-board KEY button
-(GPIO18). Only the visible page is fetched from the ETA APIs (power-efficient); a button
-press switches pages and triggers an immediate fetch for the newly-visible page.
+(GPIO18). **[SUPERSEDED]** Only the visible page is fetched from the ETA APIs
+(power-efficient); a button press switches pages and triggers an immediate fetch for the
+newly-visible page. *(Current: all pages are fetched every cycle; toggling never triggers
+a fetch — see `docs/plan-fetch-all-oos.md`.)*
 
 ---
 
@@ -20,10 +29,10 @@ press switches pages and triggers an immediate fetch for the newly-visible page.
 | Decision | Choice | Rationale |
 |---|---|---|
 | JSON structure | `pages` array of `{routes: [...]}` | Most explicit, scales beyond 2 pages, self-documenting. |
-| Fetch strategy | Fetch only the visible page | Saves power when page 2 is unused. |
+| Fetch strategy | **[SUPERSEDED]** Fetch only the visible page | Saves power when page 2 is unused. *(Current: fetch-all — D9 of plan-fetch-all-oos.md.)* |
 | Toggle mode | Manual only (no auto-rotate) | Matches "User may press KEY to toggle" intent. Lowest power. |
 | GPIO18 ownership | Page toggle wins short-press | The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked later (long-press discriminator or different button). |
-| Switch latency | Immediate fetch on switch (`xTaskNotifyGive`) | Render last-known-good instantly; fresh ETAs within ~30 s. |
+| Switch latency | **[SUPERSEDED]** Immediate fetch on switch (`xTaskNotifyGive`) | *(Removed — fetch-all means the toggled page's data is ≤ one fetch interval old; the `xTaskNotifyGive`/`xTaskNotifyWait` pair was deleted in Rev 2 of plan-fetch-all-oos.md.)* |
 | Page 2 presence | Optional, graceful degradation | If absent, device runs as 1-page system; button no-op; footer hides indicator. |
 | Partial pages | Blank rows for missing routes | Cleanest visually; no placeholder "--" rows. |
 | Page 2 content | Placeholder (duplicated from page 1) | User will fill in real routes later. |
@@ -485,6 +494,12 @@ static TaskHandle_t  s_eta_fetch_task_handle = NULL;  /* for xTaskNotifyGive */
 
 ### 5.3 `eta_fetch_task()` changes
 
+> **[SUPERSEDED]** — This snippet fetches only the visible page and uses
+> `xTaskNotifyWait` for page-switch early-wake. Since Rev 2 of `docs/plan-fetch-all-oos.md`
+> the loop fetches **all pages × routes** and the wait is a plain `vTaskDelay` (page
+> switches never wake the fetch task). See plan-fetch-all-oos.md §3.1 and CLAUDE.md
+> §Multi-Page Display for the current implementation.
+
 Replace the fetch loop and the bottom delay:
 
 ```c
@@ -568,6 +583,11 @@ Key points:
   immediately.
 
 ### 5.4 `display_task()` changes
+
+> **[SUPERSEDED]** — Step 3 below sends `xTaskNotifyGive(s_eta_fetch_task_handle)` on page
+> toggle. This was **removed** in Rev 2 of plan-fetch-all-oos.md (fetch-all makes the
+> wake unnecessary; the handle is deleted and the toggle only flips `s_active_page`).
+> Steps 4–10 remain as implemented.
 
 ```c
 static void display_task(void *arg)
@@ -658,6 +678,11 @@ static void display_task(void *arg)
 
 ### 5.5 Render-on-switch behaviour
 
+> **[SUPERSEDED]** — Steps 2 and 4 describe the `xTaskNotifyGive` early-wake and a
+> page-specific fetch. Current behaviour: the toggle flips `s_active_page` only; the
+> current render cycle draws the new page from the already-fetched double buffer
+> (≤ one fetch interval old). No fetch wake.
+
 On button press:
 1. `s_active_page` toggles immediately (atomic store).
 2. `xTaskNotifyGive` wakes `eta_fetch_task` — fresh fetch for the new page starts within
@@ -683,10 +708,10 @@ are static config fields populated at boot.
 | Page 2 has 1 or 2 routes | Missing rows render blank (no divider, no text). Present rows render normally. |
 | Page 2 has >3 routes | Excess entries logged and skipped at `route_config_load_pages()`. First 3 are used. |
 | Button press during Wi-Fi disconnect | Toggle still works; fetch will succeed once `WIFI_EVENT_STA_DISCONNECTED` handler reconnects. Existing recovery logic unchanged. |
-| Button press during fetch in progress | Notification latches. Current fetch completes for the old page; next cycle fetches the new page. |
+| Button press during fetch in progress | **[SUPERSEDED]** Notification latches. *(No notification exists today — the toggle only flips `s_active_page`; the in-flight fetch completes and publishes all pages.)* |
 | Rapid button presses (bounce / double-tap) | `button_consume_presses()` collapses all presses since last poll into one non-zero count → single toggle per render cycle. Bounce within ~10 ms collapses to one toggle. Two deliberate presses within one `refresh_seconds` window (10 s) → still one toggle (second press arrives after consume-reset, toggles back). **Acceptable**: matches "manual toggle" intent. |
-| Page switch render before first fetch of page 2 | All ETAs show `--` (sentinel from boot init). Static route info shows immediately. Fresh ETAs within ~30 s (fetch task wake + HTTP round-trip). |
-| Device boots, user never presses KEY | Page 1 behaves exactly as today. Page 2 routes never fetched (power saving). |
+| Page switch render before first fetch of page 2 | **[SUPERSEDED]** All ETAs show `--` (sentinel from boot init). *(With fetch-all, page 2 is fetched from the first cycle — no page-specific first fetch.)* |
+| Device boots, user never presses KEY | **[SUPERSEDED]** Page 2 routes never fetched (power saving). *(With fetch-all, all pages are fetched every cycle regardless of the visible page.)* |
 | `s_page_count == 1` (legacy or page 2 absent) | `button_init()` still called (driver reusable), but presses are no-ops. Footer hides page indicator. |
 
 ---
@@ -702,7 +727,7 @@ are static config fields populated at boot.
 | `main/button.c` | **New** — ISR-based press counter, atomic consume. |
 | `main/display.h` | Update `render_footer()` and `render_dashboard()` signatures (add `page_indicator_str`, `route_count`). |
 | `main/display.c` | `render_footer()`: draw `page_indicator_str` 10 px after `updated_str`. `render_dashboard()`: iterate only `route_count` rows. |
-| `main/main.c` | Per-page buffers, `s_active_page` atomic, button init, page-toggle in `display_task`, `xTaskNotifyWait` in `eta_fetch_task`, fetch only active page. |
+| `main/main.c` | Per-page buffers, `s_active_page` atomic, button init, page-toggle in `display_task`. **[SUPERSEDED]** `xTaskNotifyWait` in `eta_fetch_task`, fetch only active page *(now fetch-all + `vTaskDelay`, see plan-fetch-all-oos.md)*. |
 | `main/CMakeLists.txt` | Add `button.c` to SRCS. `esp_driver_gpio` already in REQUIRES. |
 | `design.md` | §3 rule 4 (Footer band): add "Page X/2" indicator as third element, 10 px after Updated text, hidden in single-page mode. §3 screen structure ASCII diagram: update footer line. §7 checklist: add verification item. |
 | `CLAUDE.md` | New "Multi-Page Display" section: JSON schema, fetch strategy (visible page only), GPIO18 ownership note (page toggle wins; sleep plan must be reworked), button driver API. |
@@ -719,8 +744,7 @@ are static config fields populated at boot.
 3. **Functional tests**:
    - Boot → page 1 renders, footer shows "Page 1/2".
    - Press KEY → page 2 renders within 1 render cycle. Footer shows "Page 2/2".
-   - Page 2 ETAs show last-known-good or `--` initially, then populate within ~30 s
-     (fetch wake + HTTP round-trip).
+   - **[SUPERSEDED]** Page 2 ETAs show last-known-good or `--` initially, then populate within ~30 s (fetch wake + HTTP round-trip). *(Current: both pages are fetched every cycle from boot, so page 2 ETAs are already fresh on first toggle.)*
    - Press KEY again → back to page 1, ETAs are last-known-good, refresh within ~30 s.
    - Hold off pressing for 5 min → display stays on whichever page was last selected.
      No auto-rotate.
@@ -756,6 +780,9 @@ Negligible against the 8 MB PSRAM-backed heap.
 
 ### 9.3 Fetch task early-wake on page switch — no race
 
+> **[SUPERSEDED]** — The early-wake mechanism described here was removed in Rev 2 of
+> `docs/plan-fetch-all-oos.md` (D9). There is no `xTaskNotifyGive` on page toggle today.
+
 `s_active_page` is read by `eta_fetch_task` at the top of each cycle (single snapshot).
 If `display_task` toggles the page mid-fetch, the current fetch completes for the old
 page (harmless — writes to the inactive buffer's old-page slot), and the next cycle
@@ -763,6 +790,10 @@ fetches the new page. The `xTaskNotifyGive` ensures the next cycle starts immedi
 rather than after the full 30 s delay.
 
 ### 9.4 `xTaskNotifyWait` semantics
+
+> **[SUPERSEDED]** — `xTaskNotifyWait` was replaced by a plain `vTaskDelay` in
+> `eta_fetch_task` (Rev 2 of plan-fetch-all-oos.md); the notification value can no longer
+> leak because no notifications are ever sent. Retained below as historical record.
 
 `xTaskNotifyWait(0, 0, NULL, timeout)`:
 - First arg `0` (notify bits to clear on entry): none — we don't use bit-based notify.

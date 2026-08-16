@@ -2,7 +2,15 @@
 
 Status: **Implemented 2026-08-10** — build PASS (0x4d09a0, ~4.8 MB, 40% app
 partition free), flash + on-device verification pending. Implementation
-notes (including two build failures and their fixes) in §10.
+notes (including two build failures and their fixes) in §10. The clock-trust
+gate addendum (§11) was implemented the same day (build 0x4d0b40).
+
+> **Implementation note (2026-08-10)** — §1 and §4 described updating the RTC at two
+> discrete points ("once after boot sync and once daily at 06:00"). The implementation
+> instead drives RTC writes from `sntp_sync_cb` (`cfg.sync_cb`), registered in both
+> `time_sync_init()` and `ntp_resync()`, so **every** successful SNTP sync — boot,
+> periodic, and the 06:00 resync — writes the fresh time to the RTC. This supersedes the
+> discrete-call-site wording below; see §11 and CLAUDE.md §PCF85063 RTC.
 
 ## 1. Goal
 

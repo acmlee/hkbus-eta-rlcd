@@ -1,12 +1,32 @@
 # Project: hk-bus-eta-rlcd
 
+> **Document role**: implementation reference (how, current values, file paths,
+> learned rules). Requirements (what/why/constraints) live in [PRD.md](PRD.md);
+> layout/rendering rules live in [design.md](design.md). Each fact below belongs
+> here and is *not* repeated in PRD.md — cross-references point the other way.
+> Session state is tracked in HANDOFF.md.
+
+## Document Map (ownership)
+
+| Topic | Implementation (this file) | Requirements (PRD.md) |
+|---|---|---|
+| Display init & ST7305 driver | §Waveshare Reference Repository, §ST7305 Register Values | PRD §2, §10 #1/#2 |
+| Refresh / fetch / OOS cadence | §Display Refresh | PRD FR 9, FR 15, NFR "Refresh interval" |
+| RTC + clock-trust gate | §PCF85063 RTC | PRD FR 3, FR 12, NFR "Time source" |
+| zh-HK CJK fonts | §zh-HK CJK Font Support | PRD §2, §5 |
+| KMB / Citybus endpoints | §Data Source Handling | PRD §4 Data Source, FR 5–6 |
+| Weather | §Weather Temperature & Humidity | PRD FR 13 |
+| Multi-page display | §Multi-Page Display | PRD FR 14, §6, §8 |
+| Wi-Fi reconnect / footer state | §WiFi Connection State | PRD FR 7, NFR "Wi-Fi reconnect" |
+| Layout zones / rendering rules | (rendering files) | PRD FR 7, §5; design.md §3 |
+
 ## Fixed Technical Stack
 - Target: ESP32-S3-RLCD 4.2" (ST7305 driver, 400x300, 1-bit
   monochrome, no backlight)
 - Framework: ESP-IDF (native), NOT Arduino
-- Display library: U8g2 — NOT LVGL (see design.md for rationale)
+- Display library: U8g2 — NOT LVGL (see PRD §2 and design.md for rationale)
 - Data sources: KMB ETA Open API + Citybus ETA Open API (two
-  separate response shapes — never assume they're unified)
+  separate response shapes — never assume they're unified; see PRD §4)
 - Config format: routes.json via SPIFFS, NOT hardcoded values
 - Time sync: SNTP (stdtime.gov.hk) + onboard PCF85063 RTC — RTC restores time at boot, every successful SNTP sync updates the RTC (see §PCF85063 RTC)
 
@@ -96,60 +116,62 @@ active power-saving feature. See HANDOFF.md for the session
 history of this feature's lifecycle.
 
 ## Permanent Never List
-- Never use LVGL (this board has no PSRAM requirement assumption
-  and U8g2 is the confirmed library — see PRD.md Hardware
-  Constraints)
-- Never use generic ST7305 datasheet §7.9.2 init values — always
-  use the Waveshare reference driver values as the starting point
-  (see §ST7305 Register Values above). Any other
-  deviation from Waveshare reference values still requires
-  justification.
-- Never hardcode Wi-Fi credentials — always via config file
-- Never assume Citybus and KMB JSON shapes are interchangeable
-  (both are now route-specific, but their field naming and response
-  structures differ)
+
+Each rule points to the requirement it enforces (PRD FR = functional
+requirement) instead of restating it. The rules are operational
+hard-won lessons — read them before touching related code.
+
+- Never use LVGL — U8g2 is the confirmed library (see PRD §2 Hardware
+  Constraints; rationale in design.md)
+- Never use generic ST7305 datasheet §7.9.2 init values — always use the
+  Waveshare reference driver values as the starting point (PRD §2,
+  §10 #1; see §ST7305 Register Values above). Any other deviation from
+  Waveshare reference values still requires justification.
+- Never hardcode Wi-Fi credentials — always via config file (PRD FR 2)
+- Never assume Citybus and KMB JSON shapes are interchangeable — both are
+  route-specific, but field naming and response structures differ (PRD §4)
 - Never invent pin numbers not confirmed in docs/waveshare-pinout.md
 - Never store precomputed time-relative values (e.g. "minutes until
   arrival") across task/render boundaries — always store raw epoch
-  timestamps and recompute at render time. Precomputed minutes go
-  stale between fetch cycles and compound error when a fetch is
-  delayed, retried, or jittered, causing the displayed countdown to
+  timestamps and recompute at render time (PRD FR 5–7). Precomputed
+  minutes go stale between fetch cycles and compound error when a fetch
+  is delayed, retried, or jittered, causing the displayed countdown to
   lag behind real time.
-- **Direction filtering**: KMB terminal stops return both outbound and
-  inbound ETAs. The `dest_en` field from routes.json is used with
-  `strcasecmp()` in `parse_kmb_response()` to filter out the opposite
-  direction. If `dest_en` is empty in routes.json, filtering is skipped
-  (all directions shown).
-- **ADC1 only, never ADC2, when Wi-Fi is active**: ADC2 conflicts with
-  the active Wi-Fi radio on the ESP32-S3. The battery voltage ADC uses
-  ADC1 (channel 3, GPIO4) exclusively. ADC_ATTEN_DB_12, curve-fitting
-  calibration via `adc_cali_create_scheme_curve_fitting`, 16-sample
-  averaging, 3× on-board voltage divider. Piecewise linear LUT (11-point
-  Li-ion discharge curve) for voltage-to-percentage mapping, with
-  hysteresis (1% deadband, first read always accepted) to prevent
+- **Direction filtering** (PRD FR 5): KMB terminal stops return both
+  outbound and inbound ETAs. The `dest_en` field from routes.json is
+  used with `strcasecmp()` in `parse_kmb_response()` to filter out the
+  opposite direction. If `dest_en` is empty in routes.json, filtering is
+  skipped (all directions shown).
+- **ADC1 only, never ADC2, when Wi-Fi is active** (PRD §10 #1): ADC2
+  conflicts with the active Wi-Fi radio on the ESP32-S3. The battery
+  voltage ADC uses ADC1 (channel 3, GPIO4) exclusively. ADC_ATTEN_DB_12,
+  curve-fitting calibration via `adc_cali_create_scheme_curve_fitting`,
+  16-sample averaging, 3× on-board voltage divider. Piecewise linear LUT
+  (11-point Li-ion discharge curve) for voltage-to-percentage mapping,
+  with hysteresis (1% deadband, first read always accepted) to prevent
   display flicker from ADC noise. Error/uninitialized sentinel value is
   255, displayed as `Battery:  --%` — never "0%".
-- **Never sample ADC during or near active Wi-Fi TX bursts**: The
-  ESP32-S3 Wi-Fi TX current draw (~300-400 mA peak) causes measurable
-  voltage sag on the shared battery rail. Any ADC/sensor reading that
-  coincides with a Wi-Fi TX event will capture a sagged voltage, not
-  the true resting voltage. This is a hardware-level caveat, not
-  specific to the battery feature — any future ADC sensor reading on
-  this board must either (a) sample during a confirmed Wi-Fi-idle
-  window (after `WIFI_PS_MIN_MODEM` re-enable with a settle delay),
-  or (b) apply median filtering to discard single TX-sag outliers.
-  Current battery implementation uses both (a) and (b):
+- **Never sample ADC during or near active Wi-Fi TX bursts** (PRD §10
+  #1): The ESP32-S3 Wi-Fi TX current draw (~300-400 mA peak) causes
+  measurable voltage sag on the shared battery rail. Any ADC/sensor
+  reading that coincides with a Wi-Fi TX event will capture a sagged
+  voltage, not the true resting voltage. This is a hardware-level
+  caveat, not specific to the battery feature — any future ADC sensor
+  reading on this board must either (a) sample during a confirmed
+  Wi-Fi-idle window (after `WIFI_PS_MIN_MODEM` re-enable with a settle
+  delay), or (b) apply median filtering to discard single TX-sag
+  outliers. Current battery implementation uses both (a) and (b):
   `battery_sample_if_due()` is called from `eta_fetch_task` after
   `WIFI_PS_MIN_MODEM`, with a 50 ms settle delay, rolling 5-sample
   median filter, EMA (α=0.2), and two-reading confirmation for jumps
   >6 points. `battery_get_percentage()` returns a cached value (no ADC
   read).
 - **Never omit `esp_wifi_connect()` from the `WIFI_EVENT_STA_DISCONNECTED`
-  handler**: ESP-IDF has no built-in auto-reconnect. The
-  `failure_retry_cnt` field in `wifi_config_t` only controls the
-  initial connection during `esp_wifi_start()`, not runtime
-  reconnection. After a disconnect at runtime, the application must
-  call `esp_wifi_connect()` again — typically in the
+  handler** (PRD NFR "Wi-Fi reconnect"): ESP-IDF has no built-in
+  auto-reconnect. The `failure_retry_cnt` field in `wifi_config_t` only
+  controls the initial connection during `esp_wifi_start()`, not runtime
+  reconnection. After a disconnect at runtime, the application must call
+  `esp_wifi_connect()` again — typically in the
   `WIFI_EVENT_STA_DISCONNECTED` event handler — or Wi-Fi will stay
   disconnected indefinitely. The standard ESP-IDF pattern is:
   `esp_wifi_connect()` on both `WIFI_EVENT_STA_START` and
@@ -157,11 +179,14 @@ history of this feature's lifecycle.
   to avoid log flooding on repeated disconnects.
 
 ## Data Source Handling
+- Endpoint URLs, key fields, and filtering rules are specified in
+  **PRD §4 Data Source** (the requirements-level owner of this topic).
+  This section only records implementation notes.
 - KMB uses the route-specific `/eta/{stop_id}/{route}/{service_type}` endpoint
   which returns only the requested route. Citybus uses `/eta/CTB/{stop_id}/{route}`
   — both are route-specific, but the response shapes still differ in field naming
   and structure, so parsing logic must not assume interchangeability.
-- Null ETA fields render as "--", never "0" (see PRD.md)
+- Null ETA fields render as "--", never "0" (see PRD FR 11)
 
 ## zh-HK CJK Font Support (WORKING — end-to-end verified)
 - Destination and bus-stop name fields render in **zh-HK Chinese** on
@@ -192,9 +217,6 @@ history of this feature's lifecycle.
 - **"往" prefix**: The destination line is prefixed with "往" (drawn
   in the stop-font size, `u8g2_font_zhhk_stop_20`) to indicate
   direction, followed by the destination name in `u8g2_font_zhhk_dest_24`.
-- **ETA fonts**: eta1 (soonest) uses `u8g2_font_profont29_mf` (29px bold),
-  eta2/eta3 use `u8g2_font_profont17_mf` (17px regular). The "min" suffix
-  remains `u8g2_font_profont12_mf`.
 
 ## Code Style
 - esp_err_t checked on every ESP-IDF call, no silent failures
@@ -223,7 +245,6 @@ history of this feature's lifecycle.
 - Display renders at configurable wall-clock boundaries (read from `routes.json` `refresh_seconds`). Valid values are divisors of 60 (e.g. 10, 12, 15, 20, 30) — any value that does not divide 60 evenly is rejected at boot with a warning and clamped to 10 s.
 - ETA fetch runs independently of the render cadence at a configurable interval (`routes.json` `fetch_interval_seconds`, default 30 s) with ±10% random jitter using `esp_random()` to avoid thundering-herd alignment
 - **Out-of-service adaptive interval** (`docs/plan-fetch-all-oos.md`): inside the OOS window (`oos_start`–`oos_end`, default 01:00–05:30) AND every configured route has all three ETA slots `-1`, the device is deemed out of service and the fetch interval relaxes to `oos_fetch_interval_seconds` (default 300 s). Service resumes immediately at `oos_end`, or earlier if any route returns a non-empty ETA (data wins over the time window). The OOS wait is capped at the `oos_end` boundary so the 05:30 restore is never delayed by a long night wait. Intervals are validated to [5, 3600] s and the window to `start < end` at boot (warn + default on violation).
-- Refresh interval configured via `routes.json` `refresh_seconds`
 
 ## PCF85063 RTC — Onboard Built-in Clock
 - **Hardware**: PCF85063A RTC on the shared I2C bus — **I2C0, SDA=GPIO13, SCL=GPIO14, 300 kHz, addr 0x51**. Bus is shared with the SHTC3 temp/humidity sensor and audio codec, but this firmware only drives the RTC. Time retention across power-off requires a rechargeable RTC battery in the PH1.0 holder; without it the RTC resets to year 2000 (treated as "never set").
@@ -232,7 +253,7 @@ history of this feature's lifecycle.
 - **Boot flow** (`main.c`): `rtc_pcf85063_init()` runs just before `time_sync_init()`. Inside `time_sync_init()`, after `setenv("TZ","HKT-8")` but **before** SNTP init, `rtc_pcf85063_restore_system_time()` sets the system clock from the RTC — the header shows the correct date instantly and the clock still works if Wi-Fi/SNTP fails (only when the RTC year ≥ 2026; otherwise the clock stays untrusted until the first SNTP sync — see clock-trust gate).
 - **Update, not reset**: `sntp_sync_cb` is registered as `cfg.sync_cb` in both `time_sync_init()` and `ntp_resync()`; it calls `rtc_pcf85063_store_system_time()` on every successful SNTP sync — boot sync, periodic syncs, and the daily 06:00 resync. The RTC is never set from a hardcoded value.
 - **Plausibility guards** (in `rtc_wrap.cpp`): stored RTC year must be 2024–2099; restored epoch must be ≥ 1700000000.
-- **Clock-trust gate** (docs/plan-rtc-pcf85063.md §11): an RTC with year **< 2026** is presumed severely unsynced — `rtc_pcf85063_restore_system_time()` refuses to apply it (`RTC_MIN_TRUSTED_YEAR 2026`, distinct from the `RTC_MIN_VALID_YEAR 2024` read-plausibility floor). The `s_clock_trusted` flag in main.c is set only by (a) a trusted boot restore (year ≥ 2026) or (b) the first successful SNTP sync (`sntp_sync_cb`). Until trusted: header time `----`, header date `-- --- (---)`, footer `Connecting...`, and `eta_fetch_task` skips its cycle (500 ms poll) so ETAs stay `--`; the weather/battery piggybacks are deferred with the fetch.
+- **Clock-trust gate** (PRD FR 3; docs/plan-rtc-pcf85063.md §11): an RTC with year **< 2026** is presumed severely unsynced — `rtc_pcf85063_restore_system_time()` refuses to apply it (`RTC_MIN_TRUSTED_YEAR 2026`, distinct from the `RTC_MIN_VALID_YEAR 2024` read-plausibility floor). The `s_clock_trusted` flag in main.c is set only by (a) a trusted boot restore (year ≥ 2026) or (b) the first successful SNTP sync (`sntp_sync_cb`). Until trusted: header time `----`, header date `-- --- (---)`, footer `Connecting...`, and `eta_fetch_task` skips its cycle (500 ms poll) so ETAs stay `--`; the weather/battery piggybacks are deferred with the fetch.
 - **Failure mode**: RTC absent or I2C fault → `Rtc_Setup` returns false → init logs a warning and the firmware stays in pure-SNTP mode, byte-identical to pre-RTC behaviour. Never blocks boot beyond the existing SNTP timeout.
 - **Build note**: the component's `PRIV_REQUIRES` names the logging component `log` — IDF v6 renamed `esp_log` to `log`.
 
@@ -277,4 +298,3 @@ history of this feature's lifecycle.
 - **Double-buffer**: `s_route_buf[2][MAX_PAGES][ROUTES_PER_PAGE]` — 2 buffers × 2 pages × 3 routes. `s_active_buf_idx` and `s_active_page` are atomically-swapped `volatile int` (word-sized, no tearing on ESP32-S3).
 - **Partial pages**: If a page has fewer than 3 routes, remaining rows render blank (no divider, no text, no ETA). Controlled by `route_count` parameter in `render_dashboard()`.
 - **Page 2 optional**: If `s_page_count == 1` (legacy JSON or single page), button press is a no-op and footer hides the page indicator.
-

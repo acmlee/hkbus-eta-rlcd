@@ -34,7 +34,8 @@ display showing "when's the next bus" without needing to pull out a phone.
   per-cell calibration.
 - **Temperature & humidity display** — Current air temperature (`28°C`) and relative humidity (`70%`) from the Hong Kong Observatory (HKO), shown together in the header band, fetched every ~10 min via a single HKO rhrread open data API call. Station configurable via `routes.json`. Hidden when data is unavailable or stale (>30 min).
 - **Decoupled task architecture** — ETA fetching and display rendering run as independent
-  FreeRTOS tasks. The display re-renders on wall-clock boundaries (every 15 seconds) and
+  FreeRTOS tasks. The display re-renders on wall-clock boundaries (default every 10
+  seconds, configurable via `routes.json` `refresh_seconds`, must divide 60) and
   never waits for network data. ETAs are shared via a lock-free double buffer.
 - **Wi-Fi disconnect indicator** — When Wi-Fi is disconnected (boot or runtime), the footer
   shows "Connecting..." instead of "Updated HH:MM:SS". The last-known ETAs remain visible

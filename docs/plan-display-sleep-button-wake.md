@@ -2,8 +2,22 @@
 
 **Status**: Pending
 **Created**: 2026-07-17
-**Tracking**: PRD.md §10 Open/TBC Decisions (new entry)
+**Tracking**: PRD.md §10 Open/TBC Decisions #5
 **Replaces**: PRD.md §10 Resolved Decision #7 (time-based voltage/contrast mode — found ineffective)
+
+> **Staleness notes (2026-08-16)** — Three things changed since this plan was drafted:
+> 1. **Voltage-profile code is already removed** (2026-07-20) — Phase 3 below is done;
+>    only the sleep/wake feature itself remains unimplemented.
+> 2. **GPIO18 is now claimed by page-toggle** (plan-second-page.md, implemented
+>    2026-07-26) — the "GPIO18 is free" claim in the Hardware section is stale; this plan
+>    must be reworked (long-press discriminator or a different button) before
+>    implementation.
+> 3. **Render cadence is configurable** — this plan says "every 15 s"; the display now
+>    renders on `routes.json` `refresh_seconds` boundaries (default 10 s, divisor of 60).
+>    Read every "15 s" below as "the configured render interval".
+> 4. **Fetch task no longer uses notifications** — `eta_fetch_task` now uses a plain
+>    `vTaskDelay` (page-toggle wake removed; fetch-all in place). Phase 2b's
+>    `xTaskNotifyGive` wake design must be reworked to fit the current task.
 
 ---
 
@@ -54,8 +68,11 @@ button on **GPIO18**.
 **Advantages**:
 - No extra hardware — the button is already on the board.
 - GPIO18 is not a strapping pin (unlike GPIO0/BOOT), so there are no boot-mode side effects.
-- GPIO18 is not claimed by the display init or any other peripheral in this project. The
-  current display config uses GPIO5, 11, 12, 40, 41 — GPIO18 is free.
+- **[STALE]** GPIO18 is not claimed by the display init or any other peripheral in this
+  project. *(Since 2026-07-26 GPIO18 IS claimed — page-toggle owns the short-press, see
+  `docs/plan-second-page.md`. This plan must use a long-press discriminator or a different
+  button; see the staleness notes at the top.)* The display config uses GPIO5, 11, 12, 40,
+  41 — GPIO18 was free when this plan was written.
 
 **Electrical characteristics**:
 - Active-low: the button pulls GPIO18 to GND when pressed. Read as: `0 = pressed`,
@@ -234,6 +251,11 @@ Modify `eta_fetch_task`:
   completely while asleep.
 
 ### Phase 3: Remove voltage-profile code
+
+> **ALREADY DONE (2026-07-20)** — `u8g2_st7305_set_voltage_profile()`, the two profile
+> arrays, and the `display_task` hour-check were deleted in the 2026-07-20 session
+> (see HANDOFF.md). The init sequence kept the Waveshare baseline values. This phase
+> needs no further work; retained below as historical record.
 
 - Delete `u8g2_st7305_set_voltage_profile()` and the two profile arrays from
   `components/u8g2_st7305/u8g2_st7305.c`.

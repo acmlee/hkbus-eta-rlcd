@@ -6,3 +6,4 @@ managed_components/
 dependencies.lock
 .DS_Store
 .cache/
+.trae/

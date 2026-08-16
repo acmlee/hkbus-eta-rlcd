@@ -176,9 +176,12 @@ The header weather elements (temperature `NN°C` and relative humidity `NN%`) ar
 
 - **Source**: `https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en` — a single fetch supplies both `temperature.data[]` and `humidity.data[]`. The humidity array has fewer stations than the temperature array.
 - **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`). The same station governs both fields.
-- **Fetch cadence**: Every 20th `eta_fetch_task` cycle (~10 min), piggybacked on the existing Wi-Fi-awake window — no separate task.
+- **Fetch cadence**: Time-based 600 s threshold (`WEATHER_FETCH_INTERVAL_S`), piggybacked
+  on `eta_fetch_task` (~every 20 cycles in service, ~every 2 cycles out of service),
+  riding the existing Wi-Fi-awake window — no separate task. First fetch runs immediately
+  on boot (epoch initialised to 0).
 - **Stale TTL**: 30 minutes, shared by both fields. If the last successful fetch is older than 30 min, both are hidden (not shown as stale or placeholder).
 - **Format**: `NN°C` (e.g. `28°C`) followed by `NN%` (e.g. `70%`) at a 12 px gap, both 22 px bold, `u8g2_font_profont22_mf`. Omitted entirely when data is unavailable.
 - **Humidity availability**: If the station has no humidity entry (but temperature was found), humidity is hidden while temperature remains visible — the fields are independent.
 - **Overlap drop order**: On horizontal conflict with the time element, humidity drops first, then temperature; if neither fits, the whole weather block is omitted for that frame.
-- **Failure behaviour**: Hide. No placeholder, no `--°C`, no `--%`. The header reverts to title + time only.
+- **Failure behaviour**: Hide. No placeholder, no `--°C`, no `--%`. The header reverts to date + time only.
