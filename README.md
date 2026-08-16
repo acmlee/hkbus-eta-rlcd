@@ -14,12 +14,15 @@ display showing "when's the next bus" without needing to pull out a phone.
 ## Features
 
 - **Dual-operator ETA fetch** — Real-time arrival estimates from both KMB (九巴) and
-  Citybus (城巴) open APIs, fetched every ~30 seconds with randomised jitter to avoid
-  thundering-herd alignment. Only the currently visible page's routes are fetched to
-  minimise Wi-Fi usage.
+  Citybus (城巴) open APIs, fetched at a configurable interval (~30 s default, ±10% jitter)
+  to avoid thundering-herd alignment. All routes (every page) are fetched each cycle.
+  Out-of-service adaptive interval: between 01:00–05:30 with all routes returning no ETAs,
+  the fetch relaxes to ~300 s to save power, restoring automatically at 05:30 (or as soon
+  as any ETA reappears).
 - **Multi-page display** — Up to 2 pages of 3 routes each, toggled by pressing the on-board
   KEY button (GPIO18). The footer shows "Page X/Y" to indicate which page is active.
-  Page-switch triggers an immediate fetch and render — no waiting for the next cycle.
+  All pages are kept fresh every cycle, so a page toggle always shows current data —
+  no waiting for the next cycle and no extra fetch triggered by the toggle.
 - **Traditional Chinese rendering** — zh-HK destination and bus-stop names rendered on the
   display via custom U8g2 bitmap font subsets (Noto Sans CJK HK, 27,942 glyphs covering
   CJK Unified Ideographs + Extension A + CJK punctuation + Fullwidth Forms). ASCII fallback
@@ -221,7 +224,10 @@ Example from the repository:
 | `stop_id` | Stop ID for the API endpoint. KMB uses hex IDs; Citybus uses numeric IDs. Obtain these from the respective open data portals. |
 | `stop_zh` / `stop_en` | Bus-stop name in Traditional Chinese and English. `stop_zh` is rendered first; `stop_en` is used as fallback if `stop_zh` is absent or empty. |
 | `dest_zh` / `dest_en` | Destination label. `dest_zh` is rendered first. For KMB terminal stops, `dest_en` is also used for direction filtering (case-insensitive matching) to exclude the opposite-direction ETAs returned by the API. |
-| `refresh_seconds` | Display render interval in seconds. Must be a divisor of 60 (e.g. 10, 12, 15, 20, 30) for clean wall-clock boundary alignment. Invalid values are rejected at boot with a warning and clamped to 10 s. The ETA fetch interval is independent (~30 s). |
+| `refresh_seconds` | Display render interval in seconds. Must be a divisor of 60 (e.g. 10, 12, 15, 20, 30) for clean wall-clock boundary alignment. Invalid values are rejected at boot with a warning and clamped to 10 s. The ETA fetch interval is independent (see `fetch_interval_seconds`). |
+| `fetch_interval_seconds` | (Optional) ETA fetch interval in seconds when in service. Default `30`. Valid range [5, 3600]. |
+| `oos_fetch_interval_seconds` | (Optional) ETA fetch interval in seconds when out of service. Default `300`. Valid range [5, 3600]. |
+| `oos_start` / `oos_end` | (Optional) Out-of-service window as `"HH:MM"` (24 h). Defaults `"01:00"` / `"05:30"`. Inside this window, if every route returns no ETAs (all three ETA slots `-1`), the fetch interval relaxes to `oos_fetch_interval_seconds`; any non-empty ETA restores service immediately. Invalid values are rejected at boot with a warning and the defaults are used. |
 | `weather.station` | (Optional) HKO weather station name for the header temperature and humidity display. Default `"Hong Kong Observatory"`. Set to any station name from the HKO rhrread API response. The same station governs both values. |
 
 To add a second page, append another page object to the `pages` array:
@@ -238,8 +244,9 @@ To add a second page, append another page object to the `pages` array:
 ```
 
 When a second page is present, the footer shows "Page 1/2" or "Page 2/2" and the KEY
-button toggles between them. Only the currently visible page is fetched from the API.
-Single-page configs (legacy format) show no page indicator and the button is a no-op.
+button toggles between them. All pages are fetched every cycle, so a toggle always shows
+fresh data. Single-page configs (legacy format) show no page indicator and the button is
+a no-op.
 
 ### Wi-Fi
 
@@ -254,10 +261,11 @@ placeholders — change them before building.
 The firmware runs two independent FreeRTOS tasks after boot:
 
 - **`eta_fetch_task`** (priority: `tskIDLE_PRIORITY+2`) — Owns the ETA fetch loop and
-  Wi-Fi modem-sleep toggling. Fetches data for the **currently visible page's routes**
-  every ~30 seconds with ±10% randomised jitter. Writes results into the **inactive** half
-  of a per-page double buffer, then atomically flips the active index. Page-switch
-  notifications from `display_task` trigger an immediate fetch cycle via `xTaskNotifyWait`.
+  Wi-Fi modem-sleep toggling. Fetches **all pages' routes** every cycle at the configured
+  interval (default ~30 s, ±10% jitter; relaxed to ~300 s during the out-of-service night
+  window 01:00–05:30). Writes results into the **inactive** half of a per-page double
+  buffer, then atomically flips the active index. The fetch cadence is independent of page
+  switches — toggling never triggers a fetch, since every page is fetched each cycle.
 - **`display_task`** (priority: `tskIDLE_PRIORITY+3`) — Owns wall-clock render boundary
   alignment, KEY button page toggle, daily NTP resync, and `render_dashboard()`. Reads
   from the active double-buffer and never waits for network data. Polls the button every
@@ -303,13 +311,16 @@ This section is honest about what the project **does not do**. For the full list
 
 - **Up to 6 routes (2 pages of 3)** — The display layout is designed for 3 routes per page.
   A second page of 3 routes can be configured in `routes.json`; the KEY button (GPIO18)
-  toggles between pages. Only the visible page is fetched.
+  toggles between pages. All pages are fetched every cycle, so a toggle always shows fresh
+  data.
 - **Battery percentage is approximate** — Uses a generic 18650 Li-ion discharge curve,
   not calibrated to the specific cell in your device. The voltage is sampled during
   Wi-Fi-idle windows and median-filtered to avoid TX sag artefacts, but the underlying
   curve is an approximation. Expect ±5–10% accuracy.
 - **No deep sleep** — The device maintains a persistent Wi-Fi connection and never enters
-  deep sleep. ETA fetch runs every ~30 s; display refreshes every 15 s.
+  deep sleep. ETA fetch runs at a configurable interval (default ~30 s; ~300 s during the
+  out-of-service night window 01:00–05:30); display refreshes every 10 s (configurable,
+  must divide 60).
 - **No OTA updates** — Firmware updates require a USB reflash via `idf.py flash`.
 - **No audio, no touch, no BLE** — These features exist on the board hardware but are
   unused in this firmware.

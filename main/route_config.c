@@ -7,8 +7,30 @@
 
 static const char *TAG = "route_config";
 
+/* Validation bounds for the ETA fetch intervals */
+#define FETCH_INTERVAL_MIN_S  5
+#define FETCH_INTERVAL_MAX_S  3600
+
 static int refresh_interval = 30;
+static int fetch_interval = 30;
+static int oos_fetch_interval = 300;
+static int oos_start_min = 60;      /* 01:00 */
+static int oos_end_min = 330;       /* 05:30 */
 static char s_weather_station[64] = "Hong Kong Observatory";
+
+/* ------------------------------------------------------------------
+ * Parse "HH:MM" (24 h) into minutes since midnight.
+ * Returns true on success, false on malformed input.
+ * ----------------------------------------------------------------*/
+static bool parse_hhmm(const char *s, int *min_out)
+{
+    if (s == NULL || s[0] == '\0') return false;
+    int h = -1, m = -1;
+    if (sscanf(s, "%d:%d", &h, &m) != 2) return false;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return false;
+    *min_out = h * 60 + m;
+    return true;
+}
 
 /*
  * Normalise operator string from routes.json to internal constant.
@@ -206,6 +228,63 @@ int route_config_load_pages(page_config_t pages[], int max_pages)
     }
     ESP_LOGI(TAG, "weather station = '%s'", s_weather_station);
 
+    /* Read ETA fetch intervals + out-of-service window (optional keys —
+     * defaults preserve the original behaviour: 30 s in service, 300 s
+     * out of service, 01:00–05:30 night window).  These intervals are
+     * NOT render-aligned, so the divide-60 constraint does not apply. */
+    cJSON *fi = cJSON_GetObjectItem(root, "fetch_interval_seconds");
+    if (cJSON_IsNumber(fi)) {
+        int val = fi->valueint;
+        if (val >= FETCH_INTERVAL_MIN_S && val <= FETCH_INTERVAL_MAX_S) {
+            fetch_interval = val;
+        } else {
+            ESP_LOGW(TAG, "fetch_interval_seconds=%d out of range [%d,%d], using default 30",
+                     val, FETCH_INTERVAL_MIN_S, FETCH_INTERVAL_MAX_S);
+        }
+    }
+    ESP_LOGI(TAG, "fetch_interval = %d s", fetch_interval);
+
+    cJSON *oi = cJSON_GetObjectItem(root, "oos_fetch_interval_seconds");
+    if (cJSON_IsNumber(oi)) {
+        int val = oi->valueint;
+        if (val >= FETCH_INTERVAL_MIN_S && val <= FETCH_INTERVAL_MAX_S) {
+            oos_fetch_interval = val;
+        } else {
+            ESP_LOGW(TAG, "oos_fetch_interval_seconds=%d out of range [%d,%d], using default 300",
+                     val, FETCH_INTERVAL_MIN_S, FETCH_INTERVAL_MAX_S);
+        }
+    }
+    ESP_LOGI(TAG, "oos_fetch_interval = %d s", oos_fetch_interval);
+
+    cJSON *os = cJSON_GetObjectItem(root, "oos_start");
+    int start_min = 60;
+    if (cJSON_IsString(os)) {
+        if (parse_hhmm(os->valuestring, &start_min)) {
+            oos_start_min = start_min;
+        } else {
+            ESP_LOGW(TAG, "oos_start='%s' invalid, using default 01:00", os->valuestring);
+        }
+    }
+    cJSON *oe = cJSON_GetObjectItem(root, "oos_end");
+    int end_min = 330;
+    if (cJSON_IsString(oe)) {
+        if (parse_hhmm(oe->valuestring, &end_min)) {
+            oos_end_min = end_min;
+        } else {
+            ESP_LOGW(TAG, "oos_end='%s' invalid, using default 05:30", oe->valuestring);
+        }
+    }
+    if (oos_start_min >= oos_end_min) {
+        ESP_LOGW(TAG, "oos window invalid (start %02d:%02d >= end %02d:%02d), using defaults 01:00–05:30",
+                 oos_start_min / 60, oos_start_min % 60,
+                 oos_end_min / 60, oos_end_min % 60);
+        oos_start_min = 60;
+        oos_end_min = 330;
+    }
+    ESP_LOGI(TAG, "oos window %02d:%02d – %02d:%02d",
+             oos_start_min / 60, oos_start_min % 60,
+             oos_end_min / 60, oos_end_min % 60);
+
     /* Read pages array (new format) or legacy routes array (old format) */
     int page_count = 0;
     cJSON *pages_arr = cJSON_GetObjectItem(root, "pages");
@@ -261,6 +340,26 @@ int route_config_load_pages(page_config_t pages[], int max_pages)
 int route_config_get_refresh_interval(void)
 {
     return refresh_interval;
+}
+
+int route_config_get_fetch_interval(void)
+{
+    return fetch_interval;
+}
+
+int route_config_get_oos_fetch_interval(void)
+{
+    return oos_fetch_interval;
+}
+
+int route_config_get_oos_start_min(void)
+{
+    return oos_start_min;
+}
+
+int route_config_get_oos_end_min(void)
+{
+    return oos_end_min;
 }
 
 const char *route_config_get_weather_station(void)

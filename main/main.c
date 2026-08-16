@@ -3,10 +3,11 @@
  * @brief Entry point for hk-bus-eta-rlcd — ETA dashboard on ESP32-S3-RLCD.
  *
  * Two-task design:
- *   - eta_fetch_task:  fetches ETA for the visible page's routes every ~30 s
- *                       (27–33 s, ±10% random jitter) into a
- *                       double-buffered shared buffer, toggles Wi-Fi PS.
- *                       Only the currently-active page is fetched.
+ *   - eta_fetch_task:  fetches ETA for ALL configured routes (every page)
+ *                       each cycle into a double-buffered shared buffer,
+ *                       toggles Wi-Fi PS.  Cycle interval is configurable
+ *                       (~30 s default, ±10% random jitter) and relaxes to
+ *                       ~300 s during the out-of-service night window.
  *   - display_task:    renders at wall-clock boundaries, handles
  *                       daily NTP resync, KEY button page toggle.
  *
@@ -74,8 +75,9 @@ static volatile bool s_clock_trusted = false;
  * Double-buffered shared ETA data (per-page)
  *
  * Two buffers of MAX_PAGES pages of ROUTES_PER_PAGE route_data_t each.
- * eta_fetch_task writes to the inactive buffer for the active page,
- * then atomically flips s_active_buf_idx (0 or 1).
+ * eta_fetch_task writes to the inactive buffer for ALL pages (every route
+ * in routes.json, regardless of the visible page), then atomically flips
+ * s_active_buf_idx (0 or 1).
  * display_task reads s_active_buf_idx and s_active_page once per
  * render cycle and uses those buffers for the entire render.
  * No mutex/semaphore is needed because:
@@ -101,8 +103,24 @@ static int           s_page_count = 0;
  * validated to divide 60 evenly for clean wall-clock boundaries. */
 static int s_refresh_interval = 10;
 
-/* Task handle for eta_fetch_task — used to send page-switch notifications */
-static TaskHandle_t s_eta_fetch_task_handle = NULL;
+/* ETA fetch intervals + out-of-service window — read from routes.json
+ * once at boot (plan-fetch-all-oos.md §4).  In service the ETA fetch
+ * runs every s_fetch_interval_s (~30 s default); out of service (inside
+ * [s_oos_start_min, s_oos_end_min) AND all routes empty) it relaxes to
+ * s_oos_fetch_interval_s (~300 s default).  Unlike refresh_seconds these
+ * are NOT render-aligned — the divide-60 constraint does not apply. */
+static int s_fetch_interval_s     = 30;
+static int s_oos_fetch_interval_s = 300;
+static int s_oos_start_min        = 60;    /* 01:00 */
+static int s_oos_end_min          = 330;   /* 05:30 */
+
+/* Weather piggyback cadence — time-based, state-independent: at the
+ * in-service 30 s fetch interval this fires every ~20 cycles (~600 s);
+ * during out-of-service (300 s interval) every ~2 cycles.  The weather
+ * request rides an already-awake radio window (the OOS cycle wakes the
+ * radio for the ETA fetches anyway), so the OOS power-saving is not
+ * undermined. */
+#define WEATHER_FETCH_INTERVAL_S 600
 
 /* ------------------------------------------------------------------
  * Wi-Fi station — connect with retries using EventGroup
@@ -317,14 +335,14 @@ static void ntp_resync(void)
 /* ------------------------------------------------------------------
  * eta_fetch_task — ETA fetch loop, one task
  *
- * Runs every ~30 s (xTaskNotifyWait with timeout).  Disables Wi-Fi
- * modem-sleep before fetching, re-enables it after.  Only fetches the
- * currently-active page.  Writes fresh ETA values into the currently
- * inactive double-buffer, then atomically flips the active buffer
- * index so display_task sees the new data on its next render.
- *
- * A notification from display_task (page switch) breaks the wait
- * immediately, triggering a fresh fetch for the newly-active page.
+ * Runs every fetch interval (vTaskDelay): ~30 s in service, ~300 s out
+ * of service (plan-fetch-all-oos.md §4).  Disables Wi-Fi modem-sleep
+ * before fetching, re-enables it after.  Fetches ALL configured routes
+ * (every page — regardless of the visible page) so a page toggle never
+ * shows empty/stale data and needs no immediate refetch.  Writes fresh
+ * ETA values into the currently inactive double-buffer, then atomically
+ * flips the active buffer index so display_task sees the new data on
+ * its next render.
  *
  * Priority: tskIDLE_PRIORITY+2 (lower than display_task).
  * ----------------------------------------------------------------*/
@@ -332,9 +350,16 @@ static void eta_fetch_task(void *arg)
 {
     eta_entry_t eta_buf[3];
 
-    /* Weather fetch counter: starts at 20 so the first cycle fetches
-     * immediately on boot — no 10-min wait for initial temperature. */
-    static int s_weather_cycle = 20;
+    /* Weather cadence — time-based 600 s (WEATHER_FETCH_INTERVAL_S):
+     * fetch when due, state-independent.  Initialised to 0 so the first
+     * cycle fetches immediately on boot — no 10-min wait for initial
+     * temperature (parity with the old "start at 20" counter). */
+    static time_t s_last_weather_epoch = 0;
+
+    /* Out-of-service state (plan-fetch-all-oos.md §4.2) — local to this
+     * task, used only to log transitions.  The display needs no
+     * knowledge of it: all-empty ETAs render "--" naturally. */
+    static bool s_oos = false;
 
     (void)arg;
 
@@ -342,8 +367,7 @@ static void eta_fetch_task(void *arg)
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
 
     while (1) {
-        int page = s_active_page;   /* snapshot once per cycle */
-        ESP_LOGD(TAG, "Fetch cycle start (page %d)", page + 1);
+        ESP_LOGD(TAG, "Fetch cycle start (all routes, %d pages)", s_page_count);
 
         /* Clock-trust gate (plan-rtc-pcf85063.md §11): while the clock
          * is untrusted (no RTC year >= 2026, no SNTP sync yet), do not
@@ -370,41 +394,45 @@ static void eta_fetch_task(void *arg)
          * affects the *next* loop iteration. */
         int inactive = 1 - s_active_buf_idx;
 
-        /* Fetch ETA for the active page's routes into the inactive buffer */
-        for (int i = 0; i < s_pages[page].count && i < ROUTES_PER_PAGE; i++) {
-            int n = fetch_eta(&s_pages[page].routes[i], eta_buf, 3);
-            if (n > 0) {
-                s_route_buf[inactive][page][i].eta1 = (n >= 1) ? eta_buf[0].eta_epoch : (time_t)-1;
-                s_route_buf[inactive][page][i].eta2 = (n >= 2) ? eta_buf[1].eta_epoch : (time_t)-1;
-                s_route_buf[inactive][page][i].eta3 = (n >= 3) ? eta_buf[2].eta_epoch : (time_t)-1;
-            } else {
-                /* Fetch failed — preserve last-known-good ETAs from the
-                 * active buffer, but expire to "--" if the ETA timestamp
-                 * is more than 3 minutes (180 s) in the past.  Comparing
-                 * against the ETA itself (not the fetch time) naturally
-                 * handles both "future ETA still valid" and "past ETA
-                 * should be cleared" without needing a separate fetch
-                 * timestamp. */
-                int active = s_active_buf_idx;
-                time_t now;
-                time(&now);
-                time_t e1 = s_route_buf[active][page][i].eta1;
-                time_t e2 = s_route_buf[active][page][i].eta2;
-                time_t e3 = s_route_buf[active][page][i].eta3;
+        /* Fetch ETA for ALL pages' routes into the inactive buffer —
+         * every route in routes.json regardless of the visible page,
+         * so a page toggle never shows empty/stale data. */
+        time_t now;
+        time(&now);
+        for (int p = 0; p < s_page_count; p++) {
+            for (int i = 0; i < s_pages[p].count && i < ROUTES_PER_PAGE; i++) {
+                int n = fetch_eta(&s_pages[p].routes[i], eta_buf, 3);
+                if (n > 0) {
+                    s_route_buf[inactive][p][i].eta1 = (n >= 1) ? eta_buf[0].eta_epoch : (time_t)-1;
+                    s_route_buf[inactive][p][i].eta2 = (n >= 2) ? eta_buf[1].eta_epoch : (time_t)-1;
+                    s_route_buf[inactive][p][i].eta3 = (n >= 3) ? eta_buf[2].eta_epoch : (time_t)-1;
+                } else {
+                    /* Fetch failed — preserve last-known-good ETAs from the
+                     * active buffer, but expire to "--" if the ETA timestamp
+                     * is more than 3 minutes (180 s) in the past.  Comparing
+                     * against the ETA itself (not the fetch time) naturally
+                     * handles both "future ETA still valid" and "past ETA
+                     * should be cleared" without needing a separate fetch
+                     * timestamp. */
+                    int active = s_active_buf_idx;
+                    time_t e1 = s_route_buf[active][p][i].eta1;
+                    time_t e2 = s_route_buf[active][p][i].eta2;
+                    time_t e3 = s_route_buf[active][p][i].eta3;
 
-                s_route_buf[inactive][page][i].eta1 = (e1 != (time_t)-1 && difftime(now, e1) < 180.0) ? e1 : (time_t)-1;
-                s_route_buf[inactive][page][i].eta2 = (e2 != (time_t)-1 && difftime(now, e2) < 180.0) ? e2 : (time_t)-1;
-                s_route_buf[inactive][page][i].eta3 = (e3 != (time_t)-1 && difftime(now, e3) < 180.0) ? e3 : (time_t)-1;
+                    s_route_buf[inactive][p][i].eta1 = (e1 != (time_t)-1 && difftime(now, e1) < 180.0) ? e1 : (time_t)-1;
+                    s_route_buf[inactive][p][i].eta2 = (e2 != (time_t)-1 && difftime(now, e2) < 180.0) ? e2 : (time_t)-1;
+                    s_route_buf[inactive][p][i].eta3 = (e3 != (time_t)-1 && difftime(now, e3) < 180.0) ? e3 : (time_t)-1;
+                }
+
+                /* Refresh static fields (cheap defensive copy) */
+                s_route_buf[inactive][p][i].route_num = s_pages[p].routes[i].route;
+                s_route_buf[inactive][p][i].dest_zh   = s_pages[p].routes[i].dest_zh;
+                s_route_buf[inactive][p][i].stop_zh   = s_pages[p].routes[i].stop_zh;
+
+                /* Yield to WiFi driver between requests to prevent
+                 * interrupt-watchdog timeout */
+                vTaskDelay(pdMS_TO_TICKS(100));
             }
-
-            /* Refresh static fields (cheap defensive copy) */
-            s_route_buf[inactive][page][i].route_num = s_pages[page].routes[i].route;
-            s_route_buf[inactive][page][i].dest_zh   = s_pages[page].routes[i].dest_zh;
-            s_route_buf[inactive][page][i].stop_zh   = s_pages[page].routes[i].stop_zh;
-
-            /* Yield to WiFi driver between requests to prevent
-             * interrupt-watchdog timeout */
-            vTaskDelay(pdMS_TO_TICKS(100));
         }
 
         /* Re-enable modem-sleep after fetch completes */
@@ -412,14 +440,65 @@ static void eta_fetch_task(void *arg)
 
         /* Sample battery during confirmed Wi-Fi-idle window.
          * The 50 ms settle delay is inside battery_sample_if_due().
-         * Internal cadence: samples every 2nd call (~every 60 s). */
+         * Internal cadence: samples every 2nd call (~60 s in service,
+         * ~600 s out of service — cached value, harmless). */
         battery_sample_if_due();
 
-        /* Weather fetch every 20th cycle (~10 min at 30 s/cycle).
-         * Counter advances every cycle regardless of ETA fetch success. */
-        if (++s_weather_cycle >= 20) {
-            s_weather_cycle = 0;
+        /* Re-read the clock after the fetch cycle (plan-fetch-all-oos.md
+         * §4.2): the OOS window check and the oos_end boundary cap must
+         * use the post-fetch time, so a cycle spanning 05:30 restores
+         * in-service on this same cycle rather than one cycle later.
+         * The ETA-expiry difftime inside the fetch loop used the
+         * pre-fetch time — a few seconds' skew there is immaterial. */
+        time(&now);
+
+        /* Weather piggyback — time-based 600 s cadence, state-
+         * independent: at the 30 s fetch interval that is every ~20
+         * cycles; during OOS (300 s interval) every ~2 cycles, so
+         * weather stays fresh all night.  The request rides an
+         * already-awake radio window (the OOS cycle woke the radio
+         * for the ETA fetches anyway), so the 300 s power-saving is
+         * not undermined.  Timestamp advances regardless of fetch
+         * success (parity with the old cycle counter). */
+        if (now - s_last_weather_epoch >= WEATHER_FETCH_INTERVAL_S) {
+            s_last_weather_epoch = now;
             weather_fetch_once();
+        }
+
+        /* Out-of-service state machine (plan-fetch-all-oos.md §4.2):
+         * OOS when the wall clock is inside [s_oos_start_min,
+         * s_oos_end_min) AND every configured route has all three ETA
+         * slots == -1 (blank rows on partial pages are not routes and
+         * must not count).  Any non-empty ETA keeps the device in
+         * service even inside the night window.  Evaluated against the
+         * just-written inactive buffer (post-fetch, post-preservation),
+         * i.e. exactly what display_task will render next. */
+        bool all_empty = true;
+        for (int p = 0; p < s_page_count && all_empty; p++) {
+            for (int i = 0; i < s_pages[p].count && i < ROUTES_PER_PAGE; i++) {
+                if (s_route_buf[inactive][p][i].eta1 != (time_t)-1 ||
+                    s_route_buf[inactive][p][i].eta2 != (time_t)-1 ||
+                    s_route_buf[inactive][p][i].eta3 != (time_t)-1) {
+                    all_empty = false;
+                    break;
+                }
+            }
+        }
+
+        struct tm *ti = localtime(&now);
+        int now_min = ti->tm_hour * 60 + ti->tm_min;
+        bool in_window = (now_min >= s_oos_start_min) && (now_min < s_oos_end_min);
+        bool oos = in_window && all_empty;
+
+        if (oos != s_oos) {
+            s_oos = oos;
+            if (oos) {
+                ESP_LOGW(TAG, "Out of service — fetch interval %d s",
+                         s_oos_fetch_interval_s);
+            } else {
+                ESP_LOGW(TAG, "In service — fetch interval %d s",
+                         s_fetch_interval_s);
+            }
         }
 
         /* Atomic flip: publish the newly-filled buffer.
@@ -429,14 +508,27 @@ static void eta_fetch_task(void *arg)
          * value. */
         s_active_buf_idx = inactive;
 
-        /* Wait ~30 s before next fetch cycle (27–33 s, ±10% random
-         * jitter to avoid thundering-herd alignment with other clients).
-         * xTaskNotifyWait replaces vTaskDelay so that a page-switch
-         * notification from display_task breaks the wait immediately,
-         * triggering a fresh fetch for the newly-active page. */
-        int jitter = (int)(esp_random() % 6001) - 3000;   /* -3000 to +3000 ms */
-        int delay_ms = 30000 + jitter;
-        xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(delay_ms));
+        /* Arm the wait: active interval ±10 % random jitter to avoid
+         * thundering-herd alignment with other clients.  While OOS the
+         * wait is capped at the oos_end boundary so 05:30 always
+         * triggers a wake — a 300 s wait armed at 04:50 must not run to
+         * 09:50 (the boundary wake re-evaluates and restores the
+         * in-service cadence immediately).  Plain vTaskDelay: the fetch
+         * cadence is independent of page switches — every page is
+         * fetched each cycle regardless of the visible page. */
+        int interval_ms = (oos ? s_oos_fetch_interval_s : s_fetch_interval_s) * 1000;
+        int half = interval_ms / 10;
+        int jitter = (int)(esp_random() % (2 * half + 1)) - half;
+        int delay_ms = interval_ms + jitter;
+
+        if (oos) {
+            int now_total_ms = (ti->tm_hour * 3600 + ti->tm_min * 60 + ti->tm_sec) * 1000;
+            int ms_to_end = s_oos_end_min * 60000 - now_total_ms;
+            if (ms_to_end < delay_ms) delay_ms = ms_to_end;
+            if (delay_ms <= 0) delay_ms = 10;   /* just past boundary: re-eval now */
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 }
 
@@ -603,10 +695,12 @@ static void display_task(void *arg)
         /* ---- 7. Poll until next wall-clock boundary, checking button
          *      every 50 ms so page-toggle feels instant (< 100 ms). ----
          *
-         * On button press: toggle active page, wake fetch task, drain
-         * contact-bounce pulses (50 ms + consume), then break out of
-         * the polling loop to re-enter the top of while(1) which
-         * re-reads time and renders the new page immediately.
+         * On button press: toggle active page, drain contact-bounce
+         * pulses (50 ms + consume), then break out of the polling loop
+         * to re-enter the top of while(1) which re-reads time and
+         * renders the new page immediately.  No fetch wake is needed —
+         * all pages are fetched every cycle by eta_fetch_task, so the
+         * toggled page's data is already in the active buffer.
          *
          * On normal timeout: loop back to top and render the next
          * wall-clock frame.
@@ -623,7 +717,6 @@ static void display_task(void *arg)
                     s_active_page = 1 - s_active_page;
                     ESP_LOGI(TAG, "Page switch → page %d/%d",
                              s_active_page + 1, s_page_count);
-                    xTaskNotifyGive(s_eta_fetch_task_handle);
 
                     /* Drain contact bounces: wait 50 ms, then discard
                      * any late bounce pulses so the next polling window
@@ -683,6 +776,16 @@ void app_main(void)
     s_refresh_interval = route_config_get_refresh_interval();
     ESP_LOGI(TAG, "refresh_interval = %d s", s_refresh_interval);
 
+    /* ---- Read ETA fetch intervals + OOS window from config ---- */
+    s_fetch_interval_s = route_config_get_fetch_interval();
+    s_oos_fetch_interval_s = route_config_get_oos_fetch_interval();
+    s_oos_start_min = route_config_get_oos_start_min();
+    s_oos_end_min = route_config_get_oos_end_min();
+    ESP_LOGI(TAG, "fetch_interval=%d s, oos_fetch_interval=%d s, oos window %02d:%02d-%02d:%02d",
+             s_fetch_interval_s, s_oos_fetch_interval_s,
+             s_oos_start_min / 60, s_oos_start_min % 60,
+             s_oos_end_min / 60, s_oos_end_min % 60);
+
     /* ---- Initialise double-buffer with static route info ---- */
     /* Both buffers for all pages start with the same static fields
      * (route_num, dest_zh, stop_zh) and sentinel (-1) ETA values,
@@ -726,11 +829,9 @@ void app_main(void)
      * 8192 words — HTTPS/TLS buffers dominate the stack usage here.
      * The HTTP client and TLS handshake internally allocate from
      * heap, but we keep a generous stack to accommodate the
-     * fetch_eta() call chain (HTTP request, JSON parsing, etc.).
-     * Save handle for page-switch notification. */
+     * fetch_eta() call chain (HTTP request, JSON parsing, etc.). */
     xTaskCreate(eta_fetch_task, "eta_fetch_task", 8192,
-                NULL, tskIDLE_PRIORITY + 2,
-                &s_eta_fetch_task_handle);
+                NULL, tskIDLE_PRIORITY + 2, NULL);
 
     /* app_main has no further work — delete self so the two tasks
      * run independently.  If we returned normally, the idle task

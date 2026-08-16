@@ -89,6 +89,10 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
     }
 
     int collected = 0;
+    /* First skip reason observed, for the "all entries skipped" warning
+     * below — distinguishes "no service" (missing eta) from a direction
+     * filter or parse problem at the default log level. */
+    const char *first_skip_reason = NULL;
     size_t alloc_sz = array_size * sizeof(eta_entry_t);
     eta_entry_t *tmp = malloc(alloc_sz);
     if (tmp == NULL) {
@@ -100,6 +104,7 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
         cJSON *item = cJSON_GetArrayItem(data, i);
         if (item == NULL) {
             ESP_LOGD(TAG, "kmb %s entry[%d]: item is NULL — skipped", cfg->route, i);
+            if (first_skip_reason == NULL) first_skip_reason = "item NULL";
             continue;
         }
 
@@ -114,6 +119,7 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
             ESP_LOGD(TAG, "kmb %s entry[%d]: eta= (absent/null) api_dest=\"%s\" "
                      "cfg_dest=\"%s\" — skipped (missing eta)",
                      cfg->route, i, api_dest_str, cfg->dest_en);
+            if (first_skip_reason == NULL) first_skip_reason = "missing eta";
             continue;
         }
 
@@ -128,6 +134,7 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
                          "cfg_dest=\"%s\" — skipped (direction)",
                          cfg->route, i, eta_json->valuestring,
                          api_dest_str, cfg->dest_en);
+                if (first_skip_reason == NULL) first_skip_reason = "direction filter";
                 continue;  /* wrong direction, skip */
             }
         }
@@ -138,6 +145,7 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
                      "cfg_dest=\"%s\" — skipped (parse)",
                      cfg->route, i, eta_json->valuestring,
                      api_dest_str, cfg->dest_en);
+            if (first_skip_reason == NULL) first_skip_reason = "parse failure";
             continue;
         }
 
@@ -164,12 +172,11 @@ static int parse_kmb_response(const char *json_body, const route_config_t *cfg,
 
     cJSON_Delete(root);
 
-    if (collected == 0 && cfg->dest_en[0] != '\0') {
-        ESP_LOGW(TAG, "kmb %s: all %d entries skipped (no usable ETAs) — "
-                 "dest_en='%s'", cfg->route, array_size, cfg->dest_en);
-    }
-
     if (collected == 0) {
+        ESP_LOGW(TAG, "kmb %s: all %d entries skipped (no usable ETAs) — "
+                 "dest_en='%s', first skip reason: %s",
+                 cfg->route, array_size, cfg->dest_en,
+                 first_skip_reason ? first_skip_reason : "unknown");
         free(tmp);
         return 0;
     }

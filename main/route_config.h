@@ -47,6 +47,30 @@ int route_config_load_pages(page_config_t pages[], int max_pages);
 int route_config_get_refresh_interval(void);
 
 /**
+ * @brief Get the in-service ETA fetch interval in seconds from routes.json.
+ * @return Interval in seconds (default 30 on error).
+ */
+int route_config_get_fetch_interval(void);
+
+/**
+ * @brief Get the out-of-service ETA fetch interval in seconds from routes.json.
+ * @return Interval in seconds (default 300 on error).
+ */
+int route_config_get_oos_fetch_interval(void);
+
+/**
+ * @brief Get the out-of-service window start as minutes since midnight.
+ * @return Minutes since midnight (default 60 = 01:00 on error).
+ */
+int route_config_get_oos_start_min(void);
+
+/**
+ * @brief Get the out-of-service window end as minutes since midnight.
+ * @return Minutes since midnight (default 330 = 05:30 on error).
+ */
+int route_config_get_oos_end_min(void);
+
+/**
  * @brief Get the configured weather station name from routes.json.
  * @return Pointer to static string, default "Hong Kong Observatory" if absent.
  */

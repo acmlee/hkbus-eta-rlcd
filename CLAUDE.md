@@ -221,7 +221,8 @@ history of this feature's lifecycle.
 
 ## Display Refresh
 - Display renders at configurable wall-clock boundaries (read from `routes.json` `refresh_seconds`). Valid values are divisors of 60 (e.g. 10, 12, 15, 20, 30) — any value that does not divide 60 evenly is rejected at boot with a warning and clamped to 10 s.
-- ETA fetch runs independently at ~30s interval with ±10% random jitter (27–33s, using `esp_random()`) to avoid thundering-herd alignment
+- ETA fetch runs independently of the render cadence at a configurable interval (`routes.json` `fetch_interval_seconds`, default 30 s) with ±10% random jitter using `esp_random()` to avoid thundering-herd alignment
+- **Out-of-service adaptive interval** (`docs/plan-fetch-all-oos.md`): inside the OOS window (`oos_start`–`oos_end`, default 01:00–05:30) AND every configured route has all three ETA slots `-1`, the device is deemed out of service and the fetch interval relaxes to `oos_fetch_interval_seconds` (default 300 s). Service resumes immediately at `oos_end`, or earlier if any route returns a non-empty ETA (data wins over the time window). The OOS wait is capped at the `oos_end` boundary so the 05:30 restore is never delayed by a long night wait. Intervals are validated to [5, 3600] s and the window to `start < end` at boot (warn + default on violation).
 - Refresh interval configured via `routes.json` `refresh_seconds`
 
 ## PCF85063 RTC — Onboard Built-in Clock
@@ -246,7 +247,7 @@ history of this feature's lifecycle.
 ## Weather Temperature & Humidity
 - **Source**: HKO rhrread API (`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en`) — one fetch supplies both `temperature.data[]` and `humidity.data[]`. `humidity.data` has fewer stations than `temperature.data`; never assume a station present in one is present in the other.
 - **Station**: Configurable via `routes.json` `"weather"."station"` (default: `"Hong Kong Observatory"`) — the same station governs both temperature and humidity (no separate humidity key).
-- **Fetch model**: Piggyback on `eta_fetch_task` (every 20th cycle, ~10 min). Counter starts at 20 so first fetch runs immediately on boot — no 10-min wait for initial weather.
+- **Fetch model**: Piggyback on `eta_fetch_task` at a **time-based 600 s cadence** (`WEATHER_FETCH_INTERVAL_S`) — state-independent: at the 30 s fetch interval that is every ~20 cycles; during out-of-service (300 s interval) every ~2 cycles, so weather stays fresh inside its 30-min TTL all night. The request rides an already-awake radio window (the OOS cycle wakes the radio for the ETA fetches anyway), so the 300 s power-saving is not undermined. The epoch is initialised to 0 so the first fetch runs immediately on boot — no 10-min wait for initial weather. The timestamp advances regardless of fetch success (parity with the old cycle counter).
 - **Font**: `u8g2_font_profont22_mf` (22 px bold) for **both** temperature and humidity, same baseline as the date label (y=24), 16 px gap from the date label, 12 px gap between temperature and humidity.
 - **Format**: `NN°C` (e.g. `28°C`, `\xC2\xB0` for `°`) then `NN%` (e.g. `70%`) rendered immediately after.
 - **Stale TTL**: 30 minutes (1800 s), shared by both fields. Hidden entirely when stale or unavailable — no placeholder, no `--°C`, no `--%`.
@@ -268,8 +269,8 @@ history of this feature's lifecycle.
 
 ## Multi-Page Display
 - **JSON schema**: `routes.json` uses a top-level `"pages"` array, each page object contains a `"routes"` array. Legacy top-level `"routes"` is accepted as a single-page fallback.
-- **Fetch strategy**: Only the visible page's routes are fetched. `eta_fetch_task` reads `s_active_page` once per cycle and fetches only that page's routes.
-- **Page toggle**: KEY button (GPIO18) toggles `s_active_page` (0↔1). `display_task` calls `button_consume_presses()` each tick. If `s_page_count > 1` and a press is detected, the page toggles and `xTaskNotifyGive` wakes `eta_fetch_task` for an immediate fetch.
+- **Fetch strategy**: **ALL pages' routes are fetched every cycle** — `eta_fetch_task` iterates every page × configured route (regardless of the visible page), so a page toggle never shows empty/stale data. The `s_active_page` snapshot is no longer used for fetching, and **no immediate refetch on page toggle is needed** (the `xTaskNotifyGive` was removed — see Page toggle below).
+- **Page toggle**: KEY button (GPIO18) toggles `s_active_page` (0↔1). `display_task` calls `button_consume_presses()` each tick. If `s_page_count > 1` and a press is detected, the page toggles and the polling loop breaks to re-render immediately. **No fetch wake** — all pages are already fetched every cycle, so the toggled page's data is in the active buffer (≤ one fetch interval old).
 - **Footer indicator**: "Page X/Y" rendered 10 px after "Updated HH:MM:SS" in the footer band by `render_footer()`. Hidden when `s_page_count == 1`.
 - **Button driver**: `main/button.c` — GPIO18 falling-edge ISR, atomic press counter. `button_consume_presses()` returns count since last call and resets to 0.
 - **GPIO18 ownership**: Page-toggle owns short-press. The pending sleep plan (`docs/plan-display-sleep-button-wake.md`) must be reworked (long-press discriminator or different button) when implemented.

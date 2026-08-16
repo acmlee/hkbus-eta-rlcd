@@ -64,6 +64,10 @@
     }
   ],
   "refresh_seconds": 10,
+  "fetch_interval_seconds": 30,
+  "oos_fetch_interval_seconds": 300,
+  "oos_start": "01:00",
+  "oos_end": "05:30",
   "weather": {
     "station": "Hong Kong Observatory"
   }
