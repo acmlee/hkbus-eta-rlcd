@@ -29,6 +29,7 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_random.h"
+#include "esp_pm.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -40,7 +41,9 @@
 #include "battery.h"
 #include "weather_hko.h"
 #include "button.h"
+#include "http_util.h"
 #include "rtc_pcf85063.h"
+#include "esp_timer.h"
 /* cJSON parsing is internal to eta_fetcher.c */
 
 static const char *TAG = "hkbus";
@@ -70,6 +73,24 @@ static bool         s_wifi_connected = false;
  * are suppressed (and eta_fetch_task does not fetch).  Word-sized
  * volatile — atomic on ESP32-S3, mirrors the s_active_page pattern. */
 static volatile bool s_clock_trusted = false;
+
+/* Power management (plan-battery-optimizations.md Phase 1/2): holds the CPU
+ * at max frequency during the ETA fetch burst.  With PM enabled the SoC
+ * light-sleeps whenever both tasks are blocked, and DFS drops the CPU to
+ * 80 MHz when idle — but the TLS handshakes are ~2× slower at 80 MHz, so the
+ * fetch burst takes this lock to stay at 160 MHz.  Created in app_main,
+ * acquired/released by eta_fetch_task around the fetch loop. */
+static esp_pm_lock_handle_t s_fetch_cpu_lock = NULL;
+
+/* Boot-time "stay awake for flashing" lock (plan-battery-optimizations.md):
+ * light sleep powers down the USB-Serial-JTAG, so a freshly-booted device
+ * must stay awake long enough to be flashed via the auto-reset.  Acquired in
+ * app_main and released by usb_boot_grace_expired() after USB_BOOT_GRACE_US.
+ * Beyond the grace, the built-in USJ connection monitor
+ * (CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION) holds its own NO_LIGHT_SLEEP lock
+ * while a USB host is attached and releases it when the host detaches. */
+#define USB_BOOT_GRACE_US (30LL * 1000LL * 1000LL)   /* 30 s */
+static esp_pm_lock_handle_t s_boot_grace_lock = NULL;
 
 /* ------------------------------------------------------------------
  * Double-buffered shared ETA data (per-page)
@@ -177,6 +198,12 @@ static void wifi_init_sta(const char *ssid, const char *pass)
     strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
     strncpy((char *)wifi_cfg.sta.password, pass, sizeof(wifi_cfg.sta.password) - 1);
     wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    /* Listen interval (AP beacon periods, 0 = default 3): only used when the
+     * station is in WIFI_PS_MAX_MODEM, which the firmware applies during the
+     * out-of-service night window (plan-battery-optimizations.md Phase 4) so
+     * the radio wakes every 5 beacons instead of every DTIM.  Irrelevant to
+     * WIFI_PS_MIN_MODEM, the in-service resting state. */
+    wifi_cfg.sta.listen_interval = 5;
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
 
@@ -361,6 +388,12 @@ static void eta_fetch_task(void *arg)
      * knowledge of it: all-empty ETAs render "--" naturally. */
     static bool s_oos = false;
 
+    /* Clock-trust retry: the default SNTP sync interval is 1 hour, so a
+     * single failed boot sync would otherwise leave the clock untrusted —
+     * and every ETA hidden — for a very long time.  Force a fresh SNTP
+     * query every 60 s while untrusted. */
+    static time_t s_last_ntp_retry = 0;
+
     (void)arg;
 
     /* Ensure Wi-Fi PS is in a known state before the loop */
@@ -377,6 +410,16 @@ static void eta_fetch_task(void *arg)
          * Battery/weather piggybacks are deferred with the fetch (user
          * decision D2). */
         if (!s_clock_trusted) {
+            /* Force a fresh SNTP query periodically (60 s) in case the
+             * boot-time sync failed — otherwise the clock stays untrusted
+             * (and ETAs stay hidden) until the next hourly SNTP poll. */
+            time_t now_t;
+            time(&now_t);
+            if (now_t - s_last_ntp_retry >= 60) {
+                s_last_ntp_retry = now_t;
+                ESP_LOGW(TAG, "Clock still untrusted — forcing NTP resync");
+                ntp_resync();
+            }
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
@@ -384,6 +427,16 @@ static void eta_fetch_task(void *arg)
         /* Disable modem-sleep so HTTP requests are not delayed by
          * radio power-state transitions. */
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+
+        /* Hold the CPU at max frequency for the fetch burst
+         * (plan-battery-optimizations.md Phase 2): DFS otherwise drops the
+         * CPU to 80 MHz when idle, slowing the TLS handshakes ~2×. */
+        if (s_fetch_cpu_lock != NULL) {
+            esp_err_t lock_err = esp_pm_lock_acquire(s_fetch_cpu_lock);
+            if (lock_err != ESP_OK) {
+                ESP_LOGW(TAG, "esp_pm_lock_acquire failed (0x%x)", lock_err);
+            }
+        }
 
         /* Determine which buffer is inactive (the one display_task
          * is NOT currently reading).  The read of s_active_buf_idx
@@ -437,6 +490,12 @@ static void eta_fetch_task(void *arg)
 
         /* Re-enable modem-sleep after fetch completes */
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+        if (s_fetch_cpu_lock != NULL) {
+            esp_err_t lock_err = esp_pm_lock_release(s_fetch_cpu_lock);
+            if (lock_err != ESP_OK) {
+                ESP_LOGW(TAG, "esp_pm_lock_release failed (0x%x)", lock_err);
+            }
+        }
 
         /* Sample battery during confirmed Wi-Fi-idle window.
          * The 50 ms settle delay is inside battery_sample_if_due().
@@ -464,6 +523,12 @@ static void eta_fetch_task(void *arg)
             s_last_weather_epoch = now;
             weather_fetch_once();
         }
+
+        /* Drop the per-host reuse connections (plan-battery-optimizations.md
+         * Phase 3): never reuse across cycles — servers close idle
+         * connections after a few seconds, so each cycle deliberately starts
+         * with a fresh handle and one TLS handshake per host. */
+        http_close_reuse_clients();
 
         /* Out-of-service state machine (plan-fetch-all-oos.md §4.2):
          * OOS when the wall clock is inside [s_oos_start_min,
@@ -498,6 +563,20 @@ static void eta_fetch_task(void *arg)
             } else {
                 ESP_LOGW(TAG, "In service — fetch interval %d s",
                          s_fetch_interval_s);
+            }
+        }
+
+        /* Night-time deep modem sleep (plan-battery-optimizations.md
+         * Phase 4): while OOS the fetch interval is already 300 s, so the
+         * radio rests in WIFI_PS_MAX_MODEM (waking only every listen_interval
+         * beacons — set at connect time) instead of every DTIM.  Re-asserted
+         * every OOS cycle because the fetch above restored MIN_MODEM.  The
+         * OOS → in-service transition needs no explicit restore: the next
+         * cycle's fetch path re-asserts MIN_MODEM anyway. */
+        if (oos) {
+            esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
+            if (ps_err != ESP_OK) {
+                ESP_LOGW(TAG, "wifi MAX_MODEM set failed (0x%x)", ps_err);
             }
         }
 
@@ -572,6 +651,21 @@ static void build_header_date_str(time_t now, char *buf, size_t len)
  * Priority: tskIDLE_PRIORITY+3 (higher than eta_fetch_task), because
  * render timing alignment is the more time-critical concern.
  * ----------------------------------------------------------------*/
+
+/* ---- Boot-time USB flashing grace (plan-battery-optimizations.md) ----
+ * Releases the boot-grace NO_LIGHT_SLEEP lock USB_BOOT_GRACE_US after boot.
+ * From then on the USJ connection monitor (CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION)
+ * keeps the device awake only while a USB host is actually attached.  Runs in
+ * the esp_timer task context (not ISR), so esp_pm_lock_release is safe. */
+static void usb_boot_grace_expired(void *arg)
+{
+    (void)arg;
+    if (s_boot_grace_lock != NULL) {
+        esp_pm_lock_release(s_boot_grace_lock);
+        ESP_LOGI(TAG, "USB boot grace expired — light sleep enabled (hold BOOT+RST to enter download mode)");
+    }
+}
+
 static void display_task(void *arg)
 {
     char last_updated[32];
@@ -813,6 +907,64 @@ void app_main(void)
     }
     s_active_buf_idx = 0;
     s_active_page    = 0;
+
+    /* ---- Power management (plan-battery-optimizations.md Phase 1 + 2) ----
+     * Configured LAST — after all boot-time hardware init (display SPI,
+     * Wi-Fi, RTC, SNTP) has run with PM off, exactly like the pre-optimisation
+     * boot.  From here the device spends nearly its whole life in vTaskDelay
+     * (fetch wait, render wait, button poll) with Wi-Fi in modem-sleep —
+     * ideal for automatic light sleep: whenever both tasks are blocked the
+     * SoC sleeps instead of busy-idling.  DFS scales the CPU 160 → 80 MHz
+     * when idle; eta_fetch_task holds the CPU at max during the fetch burst
+     * so the TLS handshakes stay fast.  Wi-Fi in WIFI_PS_NONE (fetch)
+     * automatically blocks light sleep; it re-enters once WIFI_PS_MIN_MODEM
+     * is restored. */
+    esp_pm_config_t pm_cfg = {
+        .max_freq_mhz       = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,  /* 160 */
+        .min_freq_mhz       = 80,
+        .light_sleep_enable = true,
+    };
+    esp_err_t pm_err = esp_pm_configure(&pm_cfg);
+    if (pm_err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_pm_configure failed (0x%x) — running without light sleep/DFS", pm_err);
+    } else {
+        ESP_LOGI(TAG, "Power management enabled: light sleep + DFS (idle 80 MHz, burst 160 MHz)");
+    }
+
+    esp_err_t lock_err = esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "eta_fetch",
+                                            &s_fetch_cpu_lock);
+    if (lock_err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_pm_lock_create failed (0x%x) — fetch burst stays at DFS-idle freq", lock_err);
+        s_fetch_cpu_lock = NULL;
+    }
+
+    /* Stay awake for the first 30 s after boot so a freshly-booted device
+     * can be flashed via the USB-Serial-JTAG auto-reset before light sleep
+     * engages (the USJ link drops on every sleep entry, and a light-sleeping
+     * device cannot be re-enumerated).  After the grace, the built-in USJ
+     * connection monitor (CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION) takes over.
+     * Non-fatal if lock/timer creation fails — the device then just needs the
+     * manual BOOT+RST download-mode entry to be flashed. */
+    lock_err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "usb_boot_grace",
+                                  &s_boot_grace_lock);
+    if (lock_err == ESP_OK) {
+        esp_err_t grace_err = esp_pm_lock_acquire(s_boot_grace_lock);
+        if (grace_err != ESP_OK) {
+            ESP_LOGW(TAG, "esp_pm_lock_acquire(usb_boot_grace) failed (0x%x)", grace_err);
+        } else {
+            const esp_timer_create_args_t grace_args = {
+                .callback = usb_boot_grace_expired,
+                .name = "usb_boot_grace",
+            };
+            esp_timer_handle_t grace_timer = NULL;
+            if (esp_timer_create(&grace_args, &grace_timer) == ESP_OK) {
+                esp_timer_start_once(grace_timer, USB_BOOT_GRACE_US);
+            }
+        }
+    } else {
+        ESP_LOGW(TAG, "esp_pm_lock_create(usb_boot_grace) failed (0x%x) — no boot grace", lock_err);
+        s_boot_grace_lock = NULL;
+    }
 
     /* ---- Create the two FreeRTOS tasks ---- */
 

@@ -271,7 +271,9 @@ int fetch_eta(const route_config_t *cfg, eta_entry_t *out, int max_results)
 
         char log_buf[48];
         snprintf(log_buf, sizeof(log_buf), "eta kmb %s", cfg->route);
-        char *body = http_get_body(url, log_buf);
+        /* Reuse-capable path (plan-battery-optimizations.md Phase 3): all
+         * KMB routes share one TLS connection per fetch cycle. */
+        char *body = http_get_body_reuse(url, log_buf);
         if (body == NULL) return -1;
 
         int ret = parse_kmb_response(body, cfg, out, max_results);
@@ -286,7 +288,8 @@ int fetch_eta(const route_config_t *cfg, eta_entry_t *out, int max_results)
 
         char log_buf[48];
         snprintf(log_buf, sizeof(log_buf), "eta ctb %s", cfg->route);
-        char *body = http_get_body(url, log_buf);
+        /* Reuse-capable path (plan-battery-optimizations.md Phase 3). */
+        char *body = http_get_body_reuse(url, log_buf);
         if (body == NULL) return -1;
 
         int ret = parse_citybus_response(body, cfg, out, max_results);

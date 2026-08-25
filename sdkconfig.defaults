@@ -5,3 +5,22 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_IPC_TASK_STACK_SIZE=2048
 CONFIG_LWIP_LOCAL_HOSTNAME="HK Bus ETA Dashboard"
+
+# Battery optimizations (docs/plan-battery-optimizations.md) — light sleep
+# + DFS.  Automatic light sleep requires tickless idle (auto-sleep when no
+# tasks run); the IRAM options let the SoC reach its low-µA sleep state with
+# Wi-Fi connected.
+CONFIG_PM_ENABLE=y
+CONFIG_PM_SLP_IRAM_OPT=y
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+# Built-in USJ connection monitor: while a USB host is attached (SOF-based)
+# it holds an ESP_PM_NO_LIGHT_SLEEP lock so the console link stays up; the
+# light sleep resumes when the host detaches. (App still adds a 30 s boot
+# grace — see usb_boot_grace in main.c.)
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
+# ESP32-S3 rev v0.2 (this board): keep the CPU and cache-tag memory powered
+# during light sleep — early S3 silicon hangs on light-sleep entry when they
+# are powered down (see docs/plan-battery-optimizations.md).
+# CONFIG_PM_POWER_DOWN_CPU_IN_LIGHT_SLEEP is not set
+# CONFIG_PM_POWER_DOWN_TAGMEM_IN_LIGHT_SLEEP is not set

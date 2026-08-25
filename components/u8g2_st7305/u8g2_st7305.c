@@ -340,6 +340,20 @@ esp_err_t u8g2_st7305_init(u8g2_st7305_t *dev, const u8g2_st7305_config_t *confi
         gpio_set_level(config->reset_io, 1);
     }
 
+    /* Keep the display control lines driven during light sleep
+     * (plan-battery-optimizations.md): the boot-time sleep-GPIO isolation
+     * (CONFIG_ESP_SLEEP_GPIO_RESET_WORKAROUND) otherwise switches every GPIO
+     * to input/floating on each light-sleep entry — the ST7305 RST line
+     * floats low, the controller resets to display-off, and the panel goes
+     * blank until a full re-init that never happens. */
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(config->mosi_io), TAG, "gpio_sleep_sel_dis mosi");
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(config->sclk_io), TAG, "gpio_sleep_sel_dis sclk");
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(config->dc_io), TAG, "gpio_sleep_sel_dis dc");
+    ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(config->cs_io), TAG, "gpio_sleep_sel_dis cs");
+    if (config->reset_io >= 0) {
+        ESP_RETURN_ON_ERROR(gpio_sleep_sel_dis(config->reset_io), TAG, "gpio_sleep_sel_dis reset");
+    }
+
     spi_bus_config_t buscfg = {
         .mosi_io_num = config->mosi_io,
         .miso_io_num = -1,

@@ -4,7 +4,8 @@ idf_component_register(SRCS "main.c" "display.c" "eta_fetcher.c" "route_config.c
                        INCLUDE_DIRS "." "fonts"
                        REQUIRES nvs_flash esp_wifi esp_event esp_http_client spiffs
                                  u8g2 u8g2_st7305 esp_driver_spi esp_driver_gpio
-                                 mbedtls esp_adc pcf85063_rtc)
+                                 mbedtls esp_adc esp_pm esp_timer pcf85063_rtc
+                                 esp_driver_usb_serial_jtag)
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE U8G2_USE_LARGE_FONTS)
 

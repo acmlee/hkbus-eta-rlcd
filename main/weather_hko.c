@@ -36,7 +36,11 @@ void weather_init(const char *station_name)
 
 void weather_fetch_once(void)
 {
-    char *body = http_get_body(HKO_URL, "weather");
+    /* Reuse-capable path (plan-battery-optimizations.md Phase 3): rides the
+     * same per-cycle handle pool as the ETA fetches; the HKO handle is
+     * created fresh each cycle and dropped at cycle end by
+     * http_close_reuse_clients() — identical behaviour to a one-shot here. */
+    char *body = http_get_body_reuse(HKO_URL, "weather");
     if (body == NULL) {
         ESP_LOGW(TAG, "weather_fetch_once: HTTP error");
         return;
