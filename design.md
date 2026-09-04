@@ -99,7 +99,7 @@ Each route row must show **both** the destination (往 — where the bus is goin
         - **2nd and 3rd ETA**: 22px, regular weight (`u8g2_font_profont22_mf`), spaced evenly to the right of the 1st value with visible gaps (8–12 px) between each value so they are clearly separated at a glance.
         - A single shared "min" suffix label may appear once beneath or beside the group rather than repeated 3×, to avoid visual clutter.
         - If a route has fewer than 3 upcoming buses, remaining slots show "--" in the same alignment and weight as their column position (2nd/3rd style), not the bold 1st-position style.
-3. **Row dividers** — 1 px horizontal line (single row of black pixels) between each route row. Not between header and row 1 (the header band itself is the separator).
+3. **Row dividers** — 1 px horizontal line (single row of black pixels) between each route row. Not between header and row 1 (the header band itself is the separator). The content area is a **fixed 3-slot grid**: dividers sit at the two internal grid boundaries regardless of how many routes the page has. A page with 1 or 2 routes leaves the remaining slots completely empty (no route number, no text, no "--"), but both dividers stay in place — blank rows never show placeholders, only whitespace between the fixed divider lines.
 4. **Footer band** — Full-width filled black rect. Three text elements: left-aligned "Updated HH:MM:SS" (or "Connecting..." if Wi-Fi is not connected), "Page X/Y" indicator placed 10 px to the right of the Updated text (hidden in single-page mode), right-aligned "Battery: XX%". No icon, no border — the black fill is the boundary.
 5. **Testing / init pattern** — On boot, show all-pixels-on (full black) for 500 ms before transitioning to the dashboard. No splash logo, no progress bar — just the flash.
 
@@ -163,7 +163,7 @@ Before presenting any HTML mockup or firmware render output as final, verify:
 - [ ] "Greyed out" / dimmed state uses a checkerboard dither (2×2 px tile), not a lighter colour.
 - [ ] No icons without accompanying text labels.
 - [ ] Footer shows "Updated HH:MM:SS" (or "Connecting..." if Wi-Fi is not connected), "Battery: XX%" right-aligned, "Page X/Y" indicator (profont12, 10 px after "Updated HH:MM:SS") when multi-page mode is active. Hidden in single-page mode.
-- [ ] Pressing the KEY button (GPIO18) toggles between page 1 and page 2 (if configured). The page indicator updates immediately.
+- [ ] Pressing the KEY button (GPIO18) cycles through the configured pages (1 → 2 → 3 → 1, up to 3 pages). The page indicator updates immediately.
 - [ ] Date/time format: `DD MMM (DDD)` date and `HH:MM` in header, `HH:MM:SS` in footer "Updated" label (24-hour).
 - [ ] The boot flash (500 ms all-pixels-on) is the only transition — no animations elsewhere.
 - [ ] Checkerboard dither (if used) is applied only to the route content area, never to the header or footer bands.

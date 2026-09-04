@@ -61,6 +61,19 @@
           "dest_zh": "油塘"
         }
       ]
+    },
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "33",
+          "stop_id": "3357B55DE2539CA3",
+          "stop_en": "LUEN YAN STREET TSUEN WAN (TW285)",
+          "stop_zh": "荃灣聯仁街",
+          "dest_en": "YAU TONG",
+          "dest_zh": "油塘"
+        }
+      ]
     }
   ],
   "refresh_seconds": 10,

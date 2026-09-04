@@ -22,7 +22,7 @@
 
 ## 1. Project Goal
 
-Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP32-S3-RLCD 4.2" board. The device fetches real-time arrival estimates from KMB and Citybus open APIs for up to 6 fixed routes (2 pages of 3), renders them on the reflective ST7305 display with large, legible text, and refreshes the display on configurable wall-clock boundaries (default 10 s) while fetching ETA data at a configurable interval (default ~30 s, jittered) — relaxed to ~300 s during the out-of-service night window (default 01:00–05:30). No touch, no audio, no OTA — a single-purpose appliance that shows "when's the next bus" at a glance. Current cadence defaults and validation rules: see CLAUDE.md §Display Refresh.
+Build a dedicated, wall-mountable Hong Kong bus ETA display on the Waveshare ESP32-S3-RLCD 4.2" board. The device fetches real-time arrival estimates from KMB and Citybus open APIs for up to 9 fixed routes (3 pages of 3), renders them on the reflective ST7305 display with large, legible text, and refreshes the display on configurable wall-clock boundaries (default 10 s) while fetching ETA data at a configurable interval (default ~30 s, jittered) — relaxed to ~300 s during the out-of-service night window (default 01:00–05:30). No touch, no audio, no OTA — a single-purpose appliance that shows "when's the next bus" at a glance. Current cadence defaults and validation rules: see CLAUDE.md §Display Refresh.
 
 ## 2. Hardware Constraints
 
@@ -161,8 +161,8 @@ Two full `route_data_t[MAX_PAGES][ROUTES_PER_PAGE]` buffers (`s_route_buf[2][MAX
 
 The following are explicitly **not** part of this version:
 
-- Runtime route switching via buttons, touch, or any UI interaction (page toggling between two fixed pages via KEY button is supported — see FR 14)
-- Support for more than 3 simultaneous routes **per page** (but up to 2 pages of 3 routes each, toggled via KEY button)
+- Runtime route switching via buttons, touch, or any UI interaction (page cycling across up to three fixed pages via KEY button is supported — see FR 14)
+- Support for more than 3 simultaneous routes **per page** (but up to 3 pages of 3 routes each, cycled via KEY button)
 - MTR (港鐵), GMB (綠色專線小巴), or any transport operator beyond KMB and Citybus
 - OTA firmware updates
 - MicroSD card usage (slot present, software ignores it entirely)
@@ -227,4 +227,4 @@ The following have been identified as future scope items and deliberately deferr
 | 3 | Temperature/humidity display | **Implemented** | Header shows `NN°C` (temperature) + `NN%` (relative humidity) from a single HKO rhrread API fetch (station: configurable via `routes.json` `weather.station`, default "Hong Kong Observatory"; same station governs both). Both rendered with `u8g2_font_profont22_mf` (22 px bold), 12 px gap between values. Fetched at a **time-based cadence** (see CLAUDE.md §Weather Temperature & Humidity — every ~20 cycles in service). Stale TTL: 30 min shared (hidden if stale). Overlap drop order: humidity first, then temperature, then whole weather block. Humidity hides independently when the station lacks a humidity entry (temperature still shown). Failure: hide entirely (no placeholder, no `--°C`/`--%`). Piggyback on existing Wi-Fi-awake window — no separate task. Files: `weather_hko.c/h`, `http_util.c/h`. |
 | 4 | Deep-sleep with periodic wake | Future | — |
 | 5 | Display sleep + button wake | **Pending** | Proposed feature: display off (0x28 sleep) outside a configurable morning window; button-triggered wake (on-board KEY button, GPIO18) for a configurable timeout. Full plan: `docs/plan-display-sleep-button-wake.md`. **NOTE**: GPIO18 is now claimed by page-toggle (`docs/plan-second-page.md`). The sleep plan must be reworked (long-press discriminator or different button). |
-| 6 | Second page (page toggle) | **Implemented 2026-07-26** | Second page of 3 routes, toggled via KEY button (GPIO18). Footer shows "Page X/Y". All pages are fetched every cycle (FR 14). See `docs/plan-second-page.md`. |
+| 6 | Second page (page toggle) | **Implemented 2026-07-26, extended + verified on device 2026-09-04** | Up to 3 pages of 3 routes each, cycled via KEY button (GPIO18) — page 1 → 2 → 3 → 1. Footer shows "Page X/Y". All pages are fetched every cycle (FR 14). Pages may hold 1–2 routes: spare rows stay empty (no placeholder) while the row dividers remain at the fixed grid boundaries. A third page (KMB route 33) was added to `routes.json` 2026-09-04 (`MAX_PAGES 2 → 3`, cyclic toggle, fixed-grid dividers). See `docs/plan-second-page.md`. |

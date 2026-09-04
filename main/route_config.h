@@ -9,7 +9,7 @@
 #define STOP_ZH_LEN    48
 #define OPERATOR_LEN   8
 
-#define MAX_PAGES       2
+#define MAX_PAGES       3
 #define ROUTES_PER_PAGE 3
 
 /** One monitored route entry loaded from routes.json */
@@ -36,7 +36,7 @@ typedef struct {
  *
  * @param pages     Output array of page configs
  * @param max_pages Capacity of the array (typically MAX_PAGES)
- * @return Number of pages loaded (1 or 2), or 0 on error.
+ * @return Number of pages loaded (1..MAX_PAGES), or 0 on error.
  */
 int route_config_load_pages(page_config_t pages[], int max_pages);
 

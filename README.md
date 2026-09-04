@@ -2,7 +2,8 @@
 
 A dedicated, wall-mountable real-time bus arrival display for Hong Kong, built on the
 Waveshare ESP32-S3-RLCD 4.2" board. It fetches live ETA data from KMB and Citybus open
-APIs for up to three fixed routes and renders them on the reflective ST7305 monochrome
+APIs for up to nine configured routes (up to 3 pages of 3 routes each) and renders three
+at a time on the reflective ST7305 monochrome
 display in large, legible text — including Traditional Chinese (zh-HK) destination and
 bus-stop names.
 
@@ -19,10 +20,13 @@ display showing "when's the next bus" without needing to pull out a phone.
   Out-of-service adaptive interval: between 01:00–05:30 with all routes returning no ETAs,
   the fetch relaxes to ~300 s to save power, restoring automatically at 05:30 (or as soon
   as any ETA reappears).
-- **Multi-page display** — Up to 2 pages of 3 routes each, toggled by pressing the on-board
-  KEY button (GPIO18). The footer shows "Page X/Y" to indicate which page is active.
+- **Multi-page display** — Up to 3 pages of 3 routes each (9 routes total), cycled by
+  pressing the on-board KEY button (GPIO18): page 1 → 2 → 3 → 1. The footer shows
+  "Page X/Y" to indicate which page is active.
   All pages are kept fresh every cycle, so a page toggle always shows current data —
-  no waiting for the next cycle and no extra fetch triggered by the toggle.
+  no waiting for the next cycle and no extra fetch triggered by the toggle. A page with
+  1 or 2 routes leaves the remaining rows empty — no placeholder text — while the row
+  dividers stay in place.
 - **Traditional Chinese rendering** — zh-HK destination and bus-stop names rendered on the
   display via custom U8g2 bitmap font subsets (Noto Sans CJK HK, 27,942 glyphs covering
   CJK Unified Ideographs + Extension A + CJK punctuation + Fullwidth Forms). ASCII fallback
@@ -139,8 +143,8 @@ successful sync.
 ### Routes (`routes.json`)
 
 Route configuration is stored in `spiffs_data/routes.json` and flashed to the SPIFFS
-partition. Edit this file before building to set your own routes (up to 2 pages of 3
-routes each).
+partition. Edit this file before building to set your own routes (up to 3 pages of 3
+routes each — 9 routes total).
 
 Example from the repository:
 
@@ -186,8 +190,8 @@ Example from the repository:
           "stop_id": "A7E87E8D797D1A52",
           "stop_en": "WANG LUNG STREET TSUEN WAN (TW272)",
           "stop_zh": "荃灣橫龍街",
-          "dest_en": "TSING YI FERRY",
-          "dest_zh": "青衣碼頭"
+          "dest_en": "KWONG YUEN",
+          "dest_zh": "廣源"
         },
         {
           "operator": "KMB",
@@ -199,18 +203,35 @@ Example from the repository:
           "dest_zh": "機場"
         },
         {
-          "operator": "CTB",
-          "route": "930",
-          "stop_id": "003449",
-          "stop_en": "Luen Yan Street",
-          "stop_zh": "聯仁街",
-          "dest_en": "Exhibition Centre Station",
-          "dest_zh": "會展站"
+          "operator": "KMB",
+          "route": "33B",
+          "stop_id": "3357B55DE2539CA3",
+          "stop_en": "LUEN YAN STREET TSUEN WAN (TW285)",
+          "stop_zh": "荃灣聯仁街",
+          "dest_en": "YAU TONG",
+          "dest_zh": "油塘"
+        }
+      ]
+    },
+    {
+      "routes": [
+        {
+          "operator": "KMB",
+          "route": "33",
+          "stop_id": "3357B55DE2539CA3",
+          "stop_en": "LUEN YAN STREET TSUEN WAN (TW285)",
+          "stop_zh": "荃灣聯仁街",
+          "dest_en": "YAU TONG",
+          "dest_zh": "油塘"
         }
       ]
     }
   ],
   "refresh_seconds": 10,
+  "fetch_interval_seconds": 30,
+  "oos_fetch_interval_seconds": 300,
+  "oos_start": "01:00",
+  "oos_end": "05:30",
   "weather": {
     "station": "Hong Kong Observatory"
   }
@@ -219,7 +240,7 @@ Example from the repository:
 
 | Field | Description |
 |-------|-------------|
-| `pages` | Array of page objects. Each page contains up to 3 route entries. If absent, a legacy top-level `"routes"` array is treated as a single page. |
+| `pages` | Array of page objects (up to 3). Each page contains up to 3 route entries. If absent, a legacy top-level `"routes"` array is treated as a single page. |
 | `operator` | `"KMB"` or `"CTB"` (Citybus) |
 | `route` | Route number, e.g. `"30X"`, `"930X"` |
 | `stop_id` | Stop ID for the API endpoint. KMB uses hex IDs; Citybus uses numeric IDs. Obtain these from the respective open data portals. |
@@ -231,23 +252,32 @@ Example from the repository:
 | `oos_start` / `oos_end` | (Optional) Out-of-service window as `"HH:MM"` (24 h). Defaults `"01:00"` / `"05:30"`. Inside this window, if every route returns no ETAs (all three ETA slots `-1`), the fetch interval relaxes to `oos_fetch_interval_seconds`; any non-empty ETA restores service immediately. Invalid values are rejected at boot with a warning and the defaults are used. |
 | `weather.station` | (Optional) HKO weather station name for the header temperature and humidity display. Default `"Hong Kong Observatory"`. Set to any station name from the HKO rhrread API response. The same station governs both values. |
 
-To add a second page, append another page object to the `pages` array:
+To add another page, append another page object to the `pages` array (up to 3 pages):
 
 ```json
 {
   "pages": [
     { "routes": [ /* page 1 routes */ ] },
-    { "routes": [ /* page 2 routes */ ] }
+    { "routes": [ /* page 2 routes */ ] },
+    { "routes": [ /* page 3 routes */ ] }
   ],
   "refresh_seconds": 10,
+  "fetch_interval_seconds": 30,
+  "oos_fetch_interval_seconds": 300,
+  "oos_start": "01:00",
+  "oos_end": "05:30",
   "weather": { "station": "Hong Kong Observatory" }
 }
 ```
 
-When a second page is present, the footer shows "Page 1/2" or "Page 2/2" and the KEY
-button toggles between them. All pages are fetched every cycle, so a toggle always shows
-fresh data. Single-page configs (legacy format) show no page indicator and the button is
-a no-op.
+When more than one page is present, the footer shows "Page X/Y" and the KEY button
+cycles through the pages (page 1 → 2 → 3 → 1). All pages are fetched every cycle, so a
+toggle always shows fresh data. Single-page configs (legacy format) show no page
+indicator and the button is a no-op.
+
+A page does not have to be full: if a page lists only 1 or 2 routes, the remaining rows
+stay empty (no placeholder text) while the 1-px row dividers between them are still
+drawn — the example above shows a one-route page 3.
 
 ### Wi-Fi
 
@@ -310,10 +340,11 @@ Helvetica bitmap fonts for English text.
 This section is honest about what the project **does not do**. For the full list, see
 [PRD.md §8](PRD.md#8-out-of-scope).
 
-- **Up to 6 routes (2 pages of 3)** — The display layout is designed for 3 routes per page.
-  A second page of 3 routes can be configured in `routes.json`; the KEY button (GPIO18)
-  toggles between pages. All pages are fetched every cycle, so a toggle always shows fresh
-  data.
+- **Up to 9 routes (3 pages of 3)** — The display layout is designed for 3 routes per page.
+  Up to 3 pages of 3 routes each can be configured in `routes.json`; the KEY button
+  (GPIO18) cycles through them (1 → 2 → 3 → 1). All pages are fetched every cycle, so a
+  toggle always shows fresh data. Pages may hold fewer than 3 routes — spare rows stay
+  empty with the row dividers intact.
 - **Battery percentage is approximate** — Uses a generic 18650 Li-ion discharge curve,
   not calibrated to the specific cell in your device. The voltage is sampled during
   Wi-Fi-idle windows and median-filtered to avoid TX sag artefacts, but the underlying

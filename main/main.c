@@ -114,7 +114,7 @@ static esp_pm_lock_handle_t s_boot_grace_lock = NULL;
  * ----------------------------------------------------------------*/
 static route_data_t s_route_buf[2][MAX_PAGES][ROUTES_PER_PAGE];
 static volatile int  s_active_buf_idx = 0;   /* 0 or 1, word-sized atomic */
-static volatile int  s_active_page    = 0;   /* 0 or 1, word-sized atomic */
+static volatile int  s_active_page    = 0;   /* 0..MAX_PAGES-1, word-sized atomic */
 
 /* Page config — loaded once at boot, shared by both tasks */
 static page_config_t s_pages[MAX_PAGES];
@@ -808,7 +808,8 @@ static void display_task(void *arg)
 
                 uint32_t presses = button_consume_presses();
                 if (presses > 0 && s_page_count > 1) {
-                    s_active_page = 1 - s_active_page;
+                    /* Cyclic wrap: 1 → 2 → ... → N → 1 */
+                    s_active_page = (s_active_page + 1) % s_page_count;
                     ESP_LOGI(TAG, "Page switch → page %d/%d",
                              s_active_page + 1, s_page_count);
 

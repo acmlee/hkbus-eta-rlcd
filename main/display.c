@@ -388,19 +388,27 @@ void render_dashboard(const char *date_str, const char *time_str,
     /* Draw all content */
     render_header(date_str, time_str, temp_str, hum_str);
 
-    for (int i = 0; i < route_count && i < 3; i++) {
+    /* Draw the fixed 3-slot content grid.  Dividers sit at the two
+     * internal row boundaries (row_y(1)-1, row_y(2)-1) regardless of
+     * how many routes the page has.  Only rows i < route_count get
+     * content — a page with 1 or 2 routes leaves the remaining slots
+     * completely blank (no route number, no text, no "--"), while the
+     * row dividers stay in place at their fixed grid positions. */
+    for (int i = 0; i < ZONE_ROW_COUNT; i++) {
         if (i > 0) {
             render_divider(row_y(i) - 1);
         }
-        render_route_row(i, routes[i].route_num, routes[i].dest_zh,
-                         routes[i].stop_zh, routes[i].eta1,
-                         routes[i].eta2, routes[i].eta3);
+        if (i < route_count) {
+            render_route_row(i, routes[i].route_num, routes[i].dest_zh,
+                             routes[i].stop_zh, routes[i].eta1,
+                             routes[i].eta2, routes[i].eta3);
+        }
     }
 
     render_footer(updated_str, battery_pct, page_indicator_str);
 
     /* Diagnostic */
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < route_count && i < ZONE_ROW_COUNT; i++) {
         ESP_LOGI(TAG, "Drew route %s → %s / %s, ETAs: %ld/%ld/%ld (epoch)",
                  routes[i].route_num, routes[i].dest_zh, routes[i].stop_zh,
                  (long)routes[i].eta1, (long)routes[i].eta2, (long)routes[i].eta3);
